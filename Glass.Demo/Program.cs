@@ -670,10 +670,10 @@ internal sealed class DemoForm : Form
         });
         GlassToast.Show(new GlassToastOptions
         {
-            Message = "Bottom-centre",
+            Message = "Bottom-right corner",
             Title = "Position",
             Icon = MessageBoxIcon.Information,
-            Position = ToastPosition.BottomCenter,
+            Position = ToastPosition.BottomRight,
         });
     }
 }

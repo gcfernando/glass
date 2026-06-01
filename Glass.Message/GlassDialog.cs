@@ -664,6 +664,14 @@ internal sealed class GlassDialog : Form
                 Location = new Point(_msgLeft, y),
                 AccessibleRole = AccessibleRole.CheckButton,
             };
+            // Size the checkbox explicitly rather than relying on AutoSize: a
+            // runtime Rebuild (e.g. toggling the detail panel) adds controls under
+            // SuspendLayout and ends with ResumeLayout(false), which skips the
+            // layout pass that AutoSize needs — leaving the label truncated.
+            _checkBoxCtrl.AutoSize = false;
+            var checkAvailW = fw - _msgLeft - Pad;
+            var checkPref = _checkBoxCtrl.GetPreferredSize(Size.Empty);
+            _checkBoxCtrl.Size = new Size(Math.Min(checkPref.Width, checkAvailW), CheckH);
             Controls.Add(_checkBoxCtrl);
             y += CheckH;
         }
