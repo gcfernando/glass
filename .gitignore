@@ -1,0 +1,15 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/Glass/FileContentIndex
+/Glass.Demo/bin/Debug/net8.0-windows
+/Glass.Demo/obj
+/Glass.Message/bin/Debug
+/Glass.Message/obj
+/Glass.Message.Tests/bin/Debug/net8.0-windows
+/Glass.Message.Tests/obj
+/.vs/Glass/v18
+/Glass.Demo/bin/Release/net8.0-windows
+/Glass.Message/bin/Release
+/Glass.Message.Tests/bin/Release/net8.0-windows
