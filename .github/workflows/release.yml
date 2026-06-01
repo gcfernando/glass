@@ -1,0 +1,168 @@
+# -----------------------------------------------------------------------------
+#  Release pipeline for Glass.Message.
+#
+#  Fires when you publish a GitHub Release (Releases -> Draft a new release ->
+#  Publish). The release tag (e.g. v1.2.3) becomes the package version.
+#
+#  Produces and attaches to the Release (so anyone can download from the repo's
+#  Releases page — no NuGet account needed):
+#    * Glass.Message.<ver>.nupkg     — one NuGet package containing ALL four
+#                                      target frameworks (net481 + net8/9/10).
+#    * Glass.Message.<ver>.snupkg    — debug symbols package.
+#    * Glass.Message-<ver>-<tfm>.zip — raw DLL + XML docs per framework, for
+#                                      people who want a single TFM directly.
+#
+#  NOTE: runs on Windows because the library targets .NET Framework 4.8.1 and
+#  Windows Forms, which only build on Windows.
+# -----------------------------------------------------------------------------
+
+name: Release
+
+on:
+  # Build + attach assets whenever a GitHub Release is published.
+  release:
+    types: [published]
+  # Allow a manual run (Actions tab -> Release -> Run workflow) for testing.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g. 1.2.3)"
+        required: true
+
+# Needed so the workflow can upload assets onto the Release.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      Configuration: Release
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install the modern .NET SDKs. .NET Framework 4.8.1's targeting pack is
+      # already present on the windows-latest image.
+      - name: Setup .NET SDKs (8 / 9 / 10)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      # Resolve the version from the release tag (strip a leading "v") or from
+      # the manual input, and expose it to later steps.
+      - name: Determine version
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'release') {
+            $v = '${{ github.event.release.tag_name }}'
+          } else {
+            $v = '${{ github.event.inputs.version }}'
+          }
+          $v = $v -replace '^v', ''
+          if ([string]::IsNullOrWhiteSpace($v)) { throw "Could not resolve a version." }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version $v"
+
+      - name: Restore
+        run: dotnet restore Glass.sln
+
+      # Build only the library (all four TFMs at once via its <TargetFrameworks>).
+      - name: Build library
+        run: >
+          dotnet build Glass.Message/Glass.Message.csproj
+          --configuration Release
+          --no-restore
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:ContinuousIntegrationBuild=true
+
+      # Run the unit tests (net8.0-windows). A failure here stops the release.
+      - name: Test
+        run: >
+          dotnet test Glass.Message.Tests/Glass.Message.Tests.csproj
+          --configuration Release
+          --no-restore
+
+      # Produce the NuGet package (+ symbols). One .nupkg holds every TFM.
+      - name: Pack NuGet package
+        run: >
+          dotnet pack Glass.Message/Glass.Message.csproj
+          --configuration Release
+          --no-build
+          --output artifacts
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:PackageVersion=${{ steps.ver.outputs.version }}
+
+      # Zip the built DLL + XML docs for each target framework individually, so
+      # the Release page offers a direct per-framework download.
+      - name: Package per-target-framework DLLs
+        shell: pwsh
+        run: |
+          $ver  = '${{ steps.ver.outputs.version }}'
+          $tfms = 'net481','net8.0-windows','net9.0-windows','net10.0-windows'
+          $bin  = 'Glass.Message/bin/Release'
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          foreach ($t in $tfms) {
+            $src = Join-Path $bin $t
+            if (-not (Test-Path $src)) { Write-Warning "Missing output for $t ($src)"; continue }
+            $wanted = 'Glass.Message.dll','Glass.Message.xml','Glass.Message.pdb'
+            $files  = Get-ChildItem -Path $src -File | Where-Object { $wanted -contains $_.Name }
+            if (-not $files) { Write-Warning "No files to zip for $t"; continue }
+            $zip = "artifacts/Glass.Message-$ver-$t.zip"
+            Compress-Archive -Path $files.FullName -DestinationPath $zip -Force
+            Write-Host "Created $zip"
+          }
+          Write-Host "`nArtifacts so far:"
+          Get-ChildItem artifacts | Format-Table Name, Length
+
+      # Publish the demo gallery as a self-contained Windows app, so anyone can
+      # download the zip, unzip, and run Glass.Demo.exe WITHOUT installing .NET.
+      - name: Publish demo app (self-contained, win-x64)
+        shell: pwsh
+        run: |
+          $ver = '${{ steps.ver.outputs.version }}'
+          dotnet publish Glass.Demo/Glass.Demo.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=$ver `
+            --output publish/demo
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Compress-Archive -Path publish/demo/* `
+            -DestinationPath "artifacts/Glass.Demo-$ver-win-x64.zip" -Force
+          Write-Host "Created artifacts/Glass.Demo-$ver-win-x64.zip"
+
+      # Always keep the artifacts on the workflow run itself (handy for manual runs).
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: glass-message-${{ steps.ver.outputs.version }}
+          path: artifacts/*
+          if-no-files-found: error
+
+      # Attach every artifact to the GitHub Release that triggered this run.
+      # Anyone visiting the repo can then download them from the Releases page.
+      #
+      # 'generate_release_notes: true' fills in auto-generated notes (from merged
+      # PRs / commits, categorised via .github/release.yml) only when the release
+      # body is still empty — so any notes you typed yourself are preserved.
+      - name: Attach assets to the Release
+        if: ${{ github.event_name == 'release' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+            artifacts/*.zip

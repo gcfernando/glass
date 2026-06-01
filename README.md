@@ -8,12 +8,16 @@ Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder �
 
 <br/>
 
+[![Latest release](https://img.shields.io/github/v/release/gcfernando/glass?sort=semver&display_name=tag&label=latest&color=0078D6)](https://github.com/gcfernando/glass/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/gcfernando/glass/total?color=3da639&label=downloads)](https://github.com/gcfernando/glass/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-4.8.1%20|%208%20|%209%20|%2010-512BD4?logo=dotnet&logoColor=white)
 ![UI](https://img.shields.io/badge/UI-WinForms-5C2D91)
-![DPI](https://img.shields.io/badge/DPI-PerMonitorV2-1f9d55)
 ![License](https://img.shields.io/badge/license-MIT-3da639)
-![Version](https://img.shields.io/badge/version-1.0.0-informational)
+
+<br/>
+
+<a href="https://github.com/gcfernando/glass/releases/latest"><b>⬇️ Download the latest release</b></a> · <a href="CHANGELOG.md"><b>📜 Changelog</b></a>
 
 <br/>
 
@@ -194,7 +198,35 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 ## 📦 Installation
 
 <details open>
-<summary><b>Option A — Project reference</b> (how the demo is wired today)</summary>
+<summary><b>Option A — Download from Releases</b> (no account, no NuGet needed)</summary>
+
+<br/>
+
+Grab the latest build straight from the repo's **[Releases page](../../releases)** → **Latest**. Each release includes:
+
+| Download | Use it for |
+|---|---|
+| `Glass.Message.<ver>.nupkg` | The NuGet package — **all four frameworks in one file** |
+| `Glass.Message-<ver>-net481.zip` | Just the **.NET Framework 4.8.1** DLL + XML docs |
+| `Glass.Message-<ver>-net8.0-windows.zip` | Just the **.NET 8** DLL |
+| `Glass.Message-<ver>-net9.0-windows.zip` | Just the **.NET 9** DLL |
+| `Glass.Message-<ver>-net10.0-windows.zip` | Just the **.NET 10** DLL |
+| `Glass.Demo-<ver>-win-x64.zip` | The **runnable demo gallery** — unzip and run `Glass.Demo.exe` (no .NET install required) |
+
+To use a raw DLL, unzip it and reference `Glass.Message.dll` from your project:
+
+```xml
+<ItemGroup>
+  <Reference Include="Glass.Message">
+    <HintPath>libs\Glass.Message.dll</HintPath>
+  </Reference>
+</ItemGroup>
+```
+
+</details>
+
+<details>
+<summary><b>Option B — Project reference</b> (how the demo is wired today)</summary>
 
 <br/>
 
@@ -211,11 +243,11 @@ dotnet add reference ..\Glass.Message\Glass.Message.csproj
 </details>
 
 <details>
-<summary><b>Option B — NuGet package</b></summary>
+<summary><b>Option C — NuGet package (local or private feed)</b></summary>
 
 <br/>
 
-The library ships with full NuGet metadata (`PackageId = Glass.Message`, MIT-licensed). Once published to a feed:
+The downloadable `.nupkg` carries full NuGet metadata (`PackageId = Glass.Message`, MIT-licensed). Drop it into a local folder feed, then:
 
 ```bash
 dotnet add package Glass.Message
@@ -227,7 +259,7 @@ Install-Package Glass.Message   # Package Manager Console
 
 </details>
 
-> Then add a single `using Glass;` and you're ready.
+> Then add a single `using Glass;` and you're ready. See the [CHANGELOG](CHANGELOG.md) for what's new in each version.
 
 ---
 
