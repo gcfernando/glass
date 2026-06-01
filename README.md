@@ -206,12 +206,13 @@ Grab the latest build straight from the repo's **[Releases page](../../releases)
 
 | Download | Use it for |
 |---|---|
-| `Glass.Message.<ver>.nupkg` | The NuGet package — **all four frameworks in one file** |
-| `Glass.Message-<ver>-net481.zip` | Just the **.NET Framework 4.8.1** DLL + XML docs |
-| `Glass.Message-<ver>-net8.0-windows.zip` | Just the **.NET 8** DLL |
-| `Glass.Message-<ver>-net9.0-windows.zip` | Just the **.NET 9** DLL |
-| `Glass.Message-<ver>-net10.0-windows.zip` | Just the **.NET 10** DLL |
-| `Glass.Demo-<ver>-win-x64.zip` | The **runnable demo gallery** — unzip and run `Glass.Demo.exe` (no .NET install required) |
+| `Glass.Message.<ver>.nupkg` | The NuGet package — **all four frameworks in one file** (AnyCPU: x86 + x64) |
+| `Glass.Message-<ver>-net481.zip` | Just the **.NET Framework 4.8.1** DLL + XML docs (AnyCPU) |
+| `Glass.Message-<ver>-net8.0-windows.zip` | Just the **.NET 8** DLL (AnyCPU) |
+| `Glass.Message-<ver>-net9.0-windows.zip` | Just the **.NET 9** DLL (AnyCPU) |
+| `Glass.Message-<ver>-net10.0-windows.zip` | Just the **.NET 10** DLL (AnyCPU) |
+| `Glass.Demo-<ver>-win-x64.zip` | The **runnable demo gallery, 64-bit** — unzip and run `Glass.Demo.exe` (no .NET install required) |
+| `Glass.Demo-<ver>-win-x86.zip` | The **runnable demo gallery, 32-bit** — for older / x86 Windows |
 
 To use a raw DLL, unzip it and reference `Glass.Message.dll` from your project:
 

@@ -11,6 +11,9 @@
 #    * Glass.Message.<ver>.snupkg    — debug symbols package.
 #    * Glass.Message-<ver>-<tfm>.zip — raw DLL + XML docs per framework, for
 #                                      people who want a single TFM directly.
+#                                      (AnyCPU — runs on both x86 and x64.)
+#    * Glass.Demo-<ver>-win-x64.zip   — runnable, self-contained demo (x64).
+#    * Glass.Demo-<ver>-win-x86.zip   — runnable, self-contained demo (x86).
 #
 #  NOTE: runs on Windows because the library targets .NET Framework 4.8.1 and
 #  Windows Forms, which only build on Windows.
@@ -123,24 +126,30 @@ jobs:
           Write-Host "`nArtifacts so far:"
           Get-ChildItem artifacts | Format-Table Name, Length
 
-      # Publish the demo gallery as a self-contained Windows app, so anyone can
-      # download the zip, unzip, and run Glass.Demo.exe WITHOUT installing .NET.
-      - name: Publish demo app (self-contained, win-x64)
+      # Publish the demo gallery as a self-contained Windows app for BOTH
+      # architectures, so anyone can download the matching zip, unzip, and run
+      # Glass.Demo.exe WITHOUT installing .NET. (The library DLLs are AnyCPU and
+      # already run on x86 and x64 — only the bundled runtime is per-arch.)
+      - name: Publish demo app (self-contained, x64 + x86)
         shell: pwsh
         run: |
-          $ver = '${{ steps.ver.outputs.version }}'
-          dotnet publish Glass.Demo/Glass.Demo.csproj `
-            --configuration Release `
-            --runtime win-x64 `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:Version=$ver `
-            --output publish/demo
+          $ver  = '${{ steps.ver.outputs.version }}'
+          $rids = 'win-x64','win-x86'
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Compress-Archive -Path publish/demo/* `
-            -DestinationPath "artifacts/Glass.Demo-$ver-win-x64.zip" -Force
-          Write-Host "Created artifacts/Glass.Demo-$ver-win-x64.zip"
+          foreach ($rid in $rids) {
+            $out = "publish/demo-$rid"
+            dotnet publish Glass.Demo/Glass.Demo.csproj `
+              --configuration Release `
+              --runtime $rid `
+              --self-contained true `
+              -p:PublishSingleFile=true `
+              -p:IncludeNativeLibrariesForSelfExtract=true `
+              -p:Version=$ver `
+              --output $out
+            Compress-Archive -Path "$out/*" `
+              -DestinationPath "artifacts/Glass.Demo-$ver-$rid.zip" -Force
+            Write-Host "Created artifacts/Glass.Demo-$ver-$rid.zip"
+          }
 
       # Always keep the artifacts on the workflow run itself (handy for manual runs).
       - name: Upload workflow artifacts
