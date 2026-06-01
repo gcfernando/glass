@@ -1,8 +1,11 @@
 # -----------------------------------------------------------------------------
 #  Release pipeline for Glass.Message.
 #
-#  Fires when you publish a GitHub Release (Releases -> Draft a new release ->
-#  Publish). The release tag (e.g. v1.2.3) becomes the package version.
+#  Fires either when you push a version tag with plain git:
+#      git tag v1.2.3
+#      git push origin v1.2.3        # <- the workflow CREATES the Release for you
+#  ...or when you publish a Release from the GitHub UI. Either way the tag
+#  (e.g. v1.2.3) becomes the package version.
 #
 #  Produces and attaches to the Release (so anyone can download from the repo's
 #  Releases page — no NuGet account needed):
@@ -22,10 +25,15 @@
 name: Release
 
 on:
-  # Build + attach assets whenever a GitHub Release is published.
+  # A) Push a version tag with plain git — the workflow creates the Release:
+  #      git tag v1.2.3 && git push origin v1.2.3
+  push:
+    tags:
+      - "v*"
+  # B) Or publish a Release from the GitHub UI.
   release:
     types: [published]
-  # Allow a manual run (Actions tab -> Release -> Run workflow) for testing.
+  # C) Manual run for testing (builds artifacts; does not touch a Release).
   workflow_dispatch:
     inputs:
       version:
@@ -59,16 +67,18 @@ jobs:
             9.0.x
             10.0.x
 
-      # Resolve the version from the release tag (strip a leading "v") or from
-      # the manual input, and expose it to later steps.
+      # Resolve the version (strip a leading "v") from whichever trigger fired:
+      #   push tag     -> github.ref_name        (e.g. v1.2.3)
+      #   release      -> release.tag_name
+      #   manual run   -> the version input
       - name: Determine version
         id: ver
         shell: pwsh
         run: |
-          if ($env:GITHUB_EVENT_NAME -eq 'release') {
-            $v = '${{ github.event.release.tag_name }}'
-          } else {
-            $v = '${{ github.event.inputs.version }}'
+          switch ($env:GITHUB_EVENT_NAME) {
+            'push'    { $v = '${{ github.ref_name }}' }
+            'release' { $v = '${{ github.event.release.tag_name }}' }
+            default   { $v = '${{ github.event.inputs.version }}' }
           }
           $v = $v -replace '^v', ''
           if ([string]::IsNullOrWhiteSpace($v)) { throw "Could not resolve a version." }
@@ -159,16 +169,19 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
-      # Attach every artifact to the GitHub Release that triggered this run.
-      # Anyone visiting the repo can then download them from the Releases page.
-      #
+      # Publish the GitHub Release and attach every artifact so anyone visiting
+      # the repo can download them from the Releases page.
+      #   * On a tag push, this CREATES the Release for the tag automatically.
+      #   * On a UI release, it just adds the assets to the existing Release.
       # 'generate_release_notes: true' fills in auto-generated notes (from merged
-      # PRs / commits, categorised via .github/release.yml) only when the release
-      # body is still empty — so any notes you typed yourself are preserved.
-      - name: Attach assets to the Release
-        if: ${{ github.event_name == 'release' }}
+      # PRs / commits, categorised via .github/release.yml) when the body is
+      # empty — so any notes you typed yourself are preserved.
+      - name: Publish Release & attach assets
+        if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Glass.Message v${{ steps.ver.outputs.version }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
