@@ -51,7 +51,6 @@
     <Title>Glass.Message</Title>
     <Version>1.0.0.0</Version>
     <Authors>Gehan Fernando</Authors>
-    <Company>Gehan Fernando</Company>
     <Product>Glass.Message</Product>
     <Description>Next-level modern replacement for MessageBox on Windows — Mica/Acrylic backdrop, auto dark/light theme, animations, toast notifications, async API, inline input, countdown, expandable detail, progress bar, RTL, and more. Drop-in compatible: GlassMessage.Show(...) compiles as-is.</Description>
     <PackageTags>messagebox dialog winforms windows11 windows10 fluent glass mica acrylic toast notification dark-mode dpi-aware</PackageTags>
