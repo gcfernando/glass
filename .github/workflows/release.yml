@@ -235,7 +235,19 @@ jobs:
             Write-Warning "NUGET_API_KEY secret is not set — skipping NuGet.org publish."
             exit 0
           }
-          dotnet nuget push "artifacts/*.nupkg" `
-            --api-key $env:NUGET_API_KEY `
-            --source https://api.nuget.org/v3/index.json `
-            --skip-duplicate
+          # Resolve the real package file(s) ourselves — dotnet nuget push does not
+          # reliably expand a quoted "artifacts/*.nupkg" wildcard and would report
+          # "File does not exist". The matching .snupkg is uploaded automatically.
+          $packages = Get-ChildItem -Path artifacts -File | Where-Object { $_.Extension -eq '.nupkg' }
+          if (-not $packages) {
+            Write-Error "No .nupkg found in 'artifacts' — nothing to publish."
+            exit 1
+          }
+          foreach ($pkg in $packages) {
+            Write-Host "Pushing $($pkg.Name)…"
+            dotnet nuget push $pkg.FullName `
+              --api-key $env:NUGET_API_KEY `
+              --source https://api.nuget.org/v3/index.json `
+              --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { throw "nuget push failed for $($pkg.Name)" }
+          }
