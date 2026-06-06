@@ -45,6 +45,13 @@ public sealed class GlassToastOptions
 
     /// <summary>Per-toast rounded-corner override; <c>null</c> falls back to the global setting.</summary>
     public bool? UseRoundedCorners { get; set; }
+
+    /// <summary>
+    /// The monitor to show the toast on. When <c>null</c> (the default) the toast
+    /// auto-targets the screen holding the active window, then the cursor, then the
+    /// primary monitor.
+    /// </summary>
+    public Screen Screen { get; set; }
 }
 
 /// <summary>
@@ -135,10 +142,21 @@ public static class GlassToast
         return tcs.Task;
     }
 
-    // Places a new toast, offsetting it past any toasts already at the same corner.
+    // The working area a toast lives in, falling back gracefully if no screen is set.
+    private static Rectangle WorkingAreaOf(ToastForm form) =>
+        form.TargetScreen?.WorkingArea
+        ?? Screen.PrimaryScreen?.WorkingArea
+        ?? new Rectangle(0, 0, 1920, 1080);
+
+    // Two toasts share a stack only when they sit at the same corner of the same
+    // monitor, so toasts on different screens never offset each other.
+    private static bool SameStack(ToastForm a, ToastForm b) =>
+        a.Position == b.Position
+        && string.Equals(a.TargetScreen?.DeviceName, b.TargetScreen?.DeviceName, StringComparison.Ordinal);
+
+    // Places a new toast, offsetting it past any toasts already in its stack.
     private static void PositionToast(ToastForm form, ToastPosition pos)
     {
-        var screen = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
         const int margin = 12;
 
         var stackedH = 0;
@@ -146,18 +164,18 @@ public static class GlassToast
         {
             foreach (var f in _active)
             {
-                if (f != form && !f.IsDisposed && f.Position == pos)
+                if (f != form && !f.IsDisposed && SameStack(f, form))
                 {
                     stackedH += f.Height + margin;
                 }
             }
         }
 
-        form.Location = CalcToastLocation(screen, form.Width, form.Height, pos, stackedH, margin);
+        form.Location = CalcToastLocation(WorkingAreaOf(form), form.Width, form.Height, pos, stackedH, margin);
     }
 
-    // Recomputes every toast position after one closes so the stack stays tight.
-    // Positions are gathered under the lock, then applied outside it to avoid
+    // Recomputes every toast position after one closes so each per-screen stack stays
+    // tight. Positions are gathered under the lock, then applied outside it to avoid
     // doing UI work while holding the lock.
     private static void ReStack(ToastPosition pos)
     {
@@ -165,9 +183,9 @@ public static class GlassToast
 
         lock (_lock)
         {
-            var screen = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
             const int margin = 12;
-            var stackedH = 0;
+            // Independent running offset per (screen, position) stack.
+            var stackHeights = new Dictionary<string, int>(StringComparer.Ordinal);
 
             foreach (var f in _active)
             {
@@ -176,8 +194,10 @@ public static class GlassToast
                     continue;
                 }
 
-                moves.Add((f, CalcToastLocation(screen, f.Width, f.Height, pos, stackedH, margin)));
-                stackedH += f.Height + margin;
+                var key = f.TargetScreen?.DeviceName ?? string.Empty;
+                _ = stackHeights.TryGetValue(key, out var stackedH);
+                moves.Add((f, CalcToastLocation(WorkingAreaOf(f), f.Width, f.Height, pos, stackedH, margin)));
+                stackHeights[key] = stackedH + f.Height + margin;
             }
         }
 
@@ -187,6 +207,31 @@ public static class GlassToast
             {
                 form.Location = loc;
             }
+        }
+    }
+
+    // Resolves which monitor a toast should appear on: an explicit override, else the
+    // screen with the active window, else the cursor's screen, else primary.
+    private static Screen ResolveScreen(GlassToastOptions options)
+    {
+        if (options.Screen != null)
+        {
+            return options.Screen;
+        }
+
+        try
+        {
+            var active = Form.ActiveForm;
+            if (active != null && active.IsHandleCreated)
+            {
+                return Screen.FromHandle(active.Handle);
+            }
+
+            return Screen.FromPoint(Cursor.Position);
+        }
+        catch
+        {
+            return Screen.PrimaryScreen;
         }
     }
 
@@ -222,6 +267,9 @@ public static class GlassToast
         private bool _dwmRounded;
         internal ToastPosition Position => _opts.Position;
 
+        /// <summary>The monitor this toast is anchored to (resolved when it was created).</summary>
+        internal Screen TargetScreen { get; }
+
         // Two timers: _fadeTimer animates opacity in/out; _stayTimer waits out the
         // visible duration in between.
         private System.Windows.Forms.Timer _fadeTimer;
@@ -239,6 +287,7 @@ public static class GlassToast
             _opts = opts;
             _theme = opts.Theme;
             _icon = GlassDialog.GetCachedSystemIcon(opts.Icon);
+            TargetScreen = ResolveScreen(opts);
 
             var rounded = opts.UseRoundedCorners ?? GlassMessage.UseRoundedCorners;
             _effectiveRadius = rounded ? _theme.CornerRadius : 0;

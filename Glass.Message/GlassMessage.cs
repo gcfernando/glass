@@ -34,6 +34,13 @@ public static class GlassMessage
     /// </summary>
     public static bool UseRoundedCorners { get; set; } = false;
 
+    /// <summary>
+    /// Global default for playing the icon's Windows system sound when a dialog
+    /// opens (as the classic <see cref="MessageBox"/> does). Off by default;
+    /// individual dialogs can override this through the builder's <c>Sound</c> method.
+    /// </summary>
+    public static bool PlaySystemSounds { get; set; } = false;
+
     // --- MessageBox-compatible synchronous overloads --------------------------
     // Each one simply fills in the defaults and forwards to Core(), so behaviour
     // stays identical no matter which overload a caller reaches for.
@@ -152,7 +159,7 @@ public static class GlassMessage
     // Non-modal path backing ShowAsync. A TaskCompletionSource bridges the dialog's
     // FormClosed event to the awaiting caller; the dialog is shown modeless so the
     // message pump keeps running.
-    private static Task<DialogResult> CoreAsync(
+    private static async Task<DialogResult> CoreAsync(
         IWin32Window owner,
         string message,
         string title,
@@ -162,10 +169,29 @@ public static class GlassMessage
         GlassTheme theme,
         CancellationToken ct)
     {
-        var tcs = new TaskCompletionSource<DialogResult>(
-                      TaskCreationOptions.RunContinuationsAsynchronously);
         var dlg = new GlassDialog(
             BasicConfig(message, title, icon, buttons, defaultButton, theme, null));
+        var result = await ShowModeless(owner, dlg, ct).ConfigureAwait(true);
+        return result.Button;
+    }
+
+    // Extended non-modal path backing the builder's ShowExAsync — same plumbing as
+    // CoreAsync but surfaces the full GlassResult (button + checkbox + input).
+    internal static Task<GlassResult> CoreExAsync(
+        IWin32Window owner, GlassDialogConfig config, CancellationToken ct)
+    {
+        config.Theme ??= DefaultTheme ?? GlassTheme.Default;
+        config.UseRoundedCorners ??= UseRoundedCorners;
+        return ShowModeless(owner, new GlassDialog(config), ct);
+    }
+
+    // Shows a dialog modeless and bridges its close to a Task<GlassResult>. Shared by
+    // every non-modal entry point so cancellation and result handling stay identical.
+    private static Task<GlassResult> ShowModeless(
+        IWin32Window owner, GlassDialog dlg, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<GlassResult>(
+                      TaskCreationOptions.RunContinuationsAsynchronously);
 
         // Cancellation marshals back onto the UI thread before touching the form,
         // since the token may be cancelled from any thread.
@@ -180,7 +206,7 @@ public static class GlassMessage
                     {
                         if (!dlg.IsDisposed)
                         {
-                            dlg.Close();
+                            dlg.RequestClose(DialogResult.Cancel);
                         }
                     }));
                 }
@@ -191,11 +217,12 @@ public static class GlassMessage
         {
             reg.Dispose();
             // A dialog dismissed without a result (e.g. via cancellation) is
-            // reported as Cancel for predictability.
-            var r = dlg.DialogResult == DialogResult.None
+            // reported as Cancel for predictability. The checkbox/input state is
+            // read here, before the form disposes its child controls below.
+            var button = dlg.DialogResult == DialogResult.None
                 ? DialogResult.Cancel
                 : dlg.DialogResult;
-            _ = tcs.TrySetResult(r);
+            _ = tcs.TrySetResult(new GlassResult(button, dlg.CheckBoxChecked, dlg.InputText));
             dlg.Dispose();
         };
 
@@ -208,6 +235,24 @@ public static class GlassMessage
             dlg.Show();
         }
 
+        // If the token was already cancelled, the registration above ran before the
+        // handle existed and was skipped — close now so the dialog never gets stuck.
+        if (ct.IsCancellationRequested && !dlg.IsDisposed)
+        {
+            dlg.RequestClose(DialogResult.Cancel);
+        }
+
         return tcs.Task;
+    }
+
+    // Shows a modeless progress dialog and hands back a controller the caller uses to
+    // update or close it. Backs GlassBuilder.ShowProgress.
+    internal static GlassProgressController CoreProgress(IWin32Window owner, GlassDialogConfig config)
+    {
+        config.Theme ??= DefaultTheme ?? GlassTheme.Default;
+        config.UseRoundedCorners ??= UseRoundedCorners;
+        var dlg = new GlassDialog(config);
+        var task = ShowModeless(owner, dlg, default);
+        return new GlassProgressController(dlg, task);
     }
 }

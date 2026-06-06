@@ -65,6 +65,13 @@ internal sealed class GlassDialogConfig
     /// </summary>
     public bool? UseRoundedCorners { get; set; }
 
+    /// <summary>
+    /// Per-dialog system-sound override. <c>null</c> means "fall back to the global
+    /// <see cref="GlassMessage.PlaySystemSounds"/> setting". When enabled, the
+    /// dialog plays the Windows sound that matches its <see cref="Icon"/> as it opens.
+    /// </summary>
+    public bool? PlaySound { get; set; }
+
     // --- Convenience flags used by the layout pass ----------------------------
     public bool HasCheckBox => CheckBoxLabel != null;
     public bool HasInput => InputMode != GlassInputMode.None;

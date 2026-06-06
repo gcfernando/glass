@@ -222,6 +222,25 @@ public class GlassBuilderTests
         var ex = Record.Exception(() => GlassMessage.Create("msg").Buttons([]));
         Assert.Null(ex);
     }
+
+    [Fact]
+    public void Builder_Sound_Returns_Builder() =>
+        Assert.NotNull(GlassMessage.Create("msg").Sound());
+
+    [Fact]
+    public void Builder_Sound_Disabled_Returns_Builder() =>
+        Assert.NotNull(GlassMessage.Create("msg").Sound(false));
+
+    [Fact]
+    public void Builder_Chains_New_Members_Fluently()
+    {
+        var b = GlassMessage.Create("msg")
+            .Title("T")
+            .Sound()
+            .Progress(25, 100)
+            .Buttons("Cancel");
+        Assert.NotNull(b);
+    }
 }
 
 /// <summary>Checks the convenience "Has…" flags on <see cref="GlassDialogConfig"/>.</summary>
@@ -270,6 +289,14 @@ public class GlassDialogConfigTests
     [Fact]
     public void UseRoundedCorners_Can_Be_Set_False() =>
         Assert.False(new GlassDialogConfig { UseRoundedCorners = false }.UseRoundedCorners);
+
+    [Fact]
+    public void PlaySound_Defaults_To_Null() =>
+        Assert.Null(new GlassDialogConfig().PlaySound);
+
+    [Fact]
+    public void PlaySound_Can_Be_Set_True() =>
+        Assert.True(new GlassDialogConfig { PlaySound = true }.PlaySound);
 }
 
 /// <summary>
@@ -284,6 +311,25 @@ public class GlassMessageStaticTests
     [Fact]
     public void UseRoundedCorners_Global_Default_Is_False() =>
         Assert.False(GlassMessage.UseRoundedCorners);
+
+    [Fact]
+    public void PlaySystemSounds_Global_Default_Is_False() =>
+        Assert.False(GlassMessage.PlaySystemSounds);
+
+    [Fact]
+    public void PlaySystemSounds_Can_Be_Set_And_Restored()
+    {
+        lock (_staticLock)
+        {
+            var original = GlassMessage.PlaySystemSounds;
+            try
+            {
+                GlassMessage.PlaySystemSounds = true;
+                Assert.True(GlassMessage.PlaySystemSounds);
+            }
+            finally { GlassMessage.PlaySystemSounds = original; }
+        }
+    }
 
     [Fact]
     public void DefaultTheme_Can_Be_Overridden_And_Restored()
@@ -340,6 +386,10 @@ public class ToastOptionsTests
     [Fact]
     public void UseRoundedCorners_Can_Be_Set_False() =>
         Assert.False(new GlassToastOptions { UseRoundedCorners = false }.UseRoundedCorners);
+
+    [Fact]
+    public void Screen_Defaults_To_Null() =>
+        Assert.Null(new GlassToastOptions().Screen);
 }
 
 /// <summary>

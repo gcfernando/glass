@@ -10,6 +10,8 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Glass;
@@ -57,6 +59,10 @@ public sealed class GlassBuilder
     // Nullable so "never called" stays distinct from an explicit true/false and
     // can fall back to the global GlassMessage.UseRoundedCorners setting.
     private bool? _roundedCorners;
+
+    // Same nullable pattern for the system-sound override (falls back to
+    // GlassMessage.PlaySystemSounds when never set).
+    private bool? _playSound;
 
     internal GlassBuilder(string message) => _message = message ?? string.Empty;
 
@@ -110,6 +116,13 @@ public sealed class GlassBuilder
     public GlassBuilder RoundedCorners(bool enable = true)
     {
         _roundedCorners = enable;
+        return this;
+    }
+
+    /// <summary>Plays (or suppresses) the Windows system sound matching the icon when the dialog opens.</summary>
+    public GlassBuilder Sound(bool enable = true)
+    {
+        _playSound = enable;
         return this;
     }
 
@@ -188,6 +201,40 @@ public sealed class GlassBuilder
     /// <summary>Shows the dialog modally and returns the full <see cref="GlassResult"/> (button + checkbox + input).</summary>
     public GlassResult ShowEx() => GlassMessage.CoreEx(_owner, BuildConfig());
 
+    /// <summary>
+    /// Shows the dialog without blocking the UI thread and returns just the button
+    /// that was pressed. The optional <paramref name="cancellationToken"/> closes the
+    /// dialog (yielding <see cref="DialogResult.Cancel"/>) if cancelled while open.
+    /// </summary>
+    public async Task<DialogResult> ShowAsync(CancellationToken cancellationToken = default)
+        => (await GlassMessage.CoreExAsync(_owner, BuildConfig(), cancellationToken).ConfigureAwait(true)).Button;
+
+    /// <summary>
+    /// Shows the dialog without blocking the UI thread and returns the full
+    /// <see cref="GlassResult"/> (button + checkbox + input) once it closes.
+    /// </summary>
+    public Task<GlassResult> ShowExAsync(CancellationToken cancellationToken = default)
+        => GlassMessage.CoreExAsync(_owner, BuildConfig(), cancellationToken);
+
+    /// <summary>
+    /// Shows a non-blocking progress dialog and returns a
+    /// <see cref="GlassProgressController"/> to update and close it while work runs.
+    /// Use with <see cref="Progress(int, int)"/> for a determinate bar (the controller
+    /// updates the value) or <see cref="ProgressIndeterminate"/> for a marquee.
+    /// </summary>
+    public GlassProgressController ShowProgress()
+    {
+        if (!_showProgress)
+        {
+            // Default to a determinate bar starting at 0 so the controller has
+            // something to drive even if the caller forgot to call Progress().
+            _showProgress = true;
+            _progressValue = 0;
+        }
+
+        return GlassMessage.CoreProgress(_owner, BuildConfig());
+    }
+
     // Snapshots the accumulated fields into the config the dialog consumes.
     private GlassDialogConfig BuildConfig() => new()
     {
@@ -213,5 +260,6 @@ public sealed class GlassBuilder
         ProgressMax = _progressMax,
         RightToLeft = _rightToLeft,
         UseRoundedCorners = _roundedCorners,
+        PlaySound = _playSound,
     };
 }

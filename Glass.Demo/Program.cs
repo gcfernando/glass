@@ -9,6 +9,7 @@
 
 using System;
 using System.Drawing;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Glass.Demo;
@@ -75,6 +76,9 @@ internal sealed class DemoForm : Form
             ("Toast — Stacking",                          Demo_ToastStack),
             ("Toast — Four Corners",                      Demo_ToastCorners),
             ("Async ShowAsync",                           Demo_Async),
+            ("Async Builder (ShowExAsync)",               Demo_AsyncBuilder),
+            ("Live Progress Controller",                  Demo_ProgressController),
+            ("Icon System Sound",                         Demo_Sound),
             ("All Buttons + ShowEx Rich Result",          Demo_ShowEx),
         };
 
@@ -192,11 +196,11 @@ internal sealed class DemoForm : Form
     {
         using var bmp = new Bitmap(48, 48);
         using (var g = System.Drawing.Graphics.FromImage(bmp))
+        using (var logoFont = new Font("Segoe UI", 26f, FontStyle.Bold))
         {
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.FillEllipse(System.Drawing.Brushes.DodgerBlue, 2, 2, 44, 44);
-            g.DrawString("G", new Font("Segoe UI", 26f, FontStyle.Bold),
-                System.Drawing.Brushes.White, new PointF(10, 6));
+            g.DrawString("G", logoFont, System.Drawing.Brushes.White, new PointF(10, 6));
         }
         _ = GlassMessage.Create(
                 "Glass.Message v1.0 is active and your custom branding has been applied.\n\n" +
@@ -356,6 +360,7 @@ internal sealed class DemoForm : Form
             .Title("فشل الحفظ — القرص ممتلئ")
             .Icon(MessageBoxIcon.Error)
             .Buttons(MessageBoxButtons.RetryCancel)
+            .CheckBox("Don't show this message again")
             .RightToLeft()
             .Show();
 
@@ -593,6 +598,79 @@ internal sealed class DemoForm : Form
             r == DialogResult.OK ? "Pushing to origin/main…" : "Sync Deferred",
             r == DialogResult.OK ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
     }
+
+    // Awaits a rich builder dialog (input + checkbox) without blocking the UI thread.
+    private static async void Demo_AsyncBuilder()
+    {
+        var r = await GlassMessage.Create(
+                "Create a shared link for 'Annual_Report_Q4_2025.xlsx'.\n\n" +
+                "Anyone with the link will be able to view the file until it expires. " +
+                "Give the link a label so you can revoke it later from Sharing settings.")
+            .Title("Create Shared Link")
+            .Icon(MessageBoxIcon.Question)
+            .InputText("Link label", "Finance review — Q1")
+            .CheckBox("Allow downloading", defaultChecked: true)
+            .Buttons("Create link", "Cancel")
+            .ShowExAsync();
+
+        if (r.Button == DialogResult.OK)
+        {
+            _ = GlassMessage.Show(
+                $"Link '{r.InputText}' created.\nDownloading: {(r.CheckBoxChecked ? "allowed" : "blocked")}.",
+                "Link Ready", MessageBoxIcon.Information);
+        }
+    }
+
+    // Shows a non-blocking progress dialog and drives it from a background loop via
+    // the controller, honouring a user cancellation.
+    private static async void Demo_ProgressController()
+    {
+        var progress = GlassMessage.Create("Preparing backup…")
+            .Title("OneDrive Backup")
+            .Icon(MessageBoxIcon.Information)
+            .Progress(0, 100)
+            .Buttons("Cancel")
+            .ShowProgress();
+
+        for (var i = 0; i <= 100; i += 4)
+        {
+            if (progress.WasCanceledByUser)
+            {
+                break;
+            }
+
+            progress.SetValue(i);
+            progress.SetMessage($"Backing up Documents…  {i}%  ·  {i * 51} of 5,120 files");
+            await Task.Delay(90);
+        }
+
+        if (!progress.WasCanceledByUser)
+        {
+            progress.Complete();
+        }
+
+        _ = await progress.Completion;
+
+        _ = GlassMessage.Show(
+            progress.WasCanceledByUser
+                ? "Backup cancelled. Files already copied were kept."
+                : "Backup complete — 5,120 files (2.1 GB) copied to OneDrive.",
+            "OneDrive Backup",
+            progress.WasCanceledByUser ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+    }
+
+    // Plays the Windows system sound that matches each icon as the dialog opens.
+    private static void Demo_Sound()
+        => GlassMessage.Create(
+                "This dialog played the Windows 'Critical Stop' sound as it opened, matching its " +
+                "Error icon.\n\n" +
+                "Enable it per-dialog with .Sound() on the builder, or globally with " +
+                "GlassMessage.PlaySystemSounds = true.")
+            .Title("Icon System Sound")
+            .Icon(MessageBoxIcon.Error)
+            .Sound()
+            .Buttons(MessageBoxButtons.OK)
+            .Show();
 
     private static void Demo_ShowEx()
     {

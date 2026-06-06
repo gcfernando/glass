@@ -11,11 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > without installing .NET. The notes below become the release description
 > automatically. See the [Releases page](../../releases).
 
-## [Unreleased]
-
-_Changes landed on `main` but not yet released will appear here._
-
-## [1.0.0] - 2026-06-01
+## [1.0.0.0] - 2026-06-06
 
 First public release. 🎉
 
@@ -24,10 +20,17 @@ First public release. 🎉
 - **Drop-in `MessageBox` replacement** — `GlassMessage.Show(...)` overloads that
   are signature-compatible with `System.Windows.Forms.MessageBox`.
 - **Fluent builder** — `GlassMessage.Create(...)` for composing dialogs.
-- **Async dialogs** — `GlassMessage.ShowAsync(...)`: non-blocking, awaitable, and
-  cancellable via `CancellationToken`.
-- **Rich result** — `ShowEx()` returns a `GlassResult` (button + checkbox state +
-  typed input); implicitly converts to `DialogResult`.
+- **Async dialogs** — non-blocking, awaitable, and cancellable via
+  `CancellationToken`:
+  - `GlassMessage.ShowAsync(...)` for the basic message-box shape.
+  - `GlassBuilder.ShowAsync()` / `ShowExAsync()` so rich dialogs (input, checkbox,
+    dropdown) can be awaited too. Cancellation yields `DialogResult.Cancel`.
+- **Rich result** — `ShowEx()` / `ShowExAsync()` return a `GlassResult` (button +
+  checkbox state + typed input); implicitly converts to `DialogResult`.
+- **Live progress** — `GlassBuilder.ShowProgress()` returns a thread-safe
+  `GlassProgressController` to update the bar (`SetValue`) and caption
+  (`SetMessage`) while work runs, `Complete()` it, await `Completion`, and detect
+  user dismissal via `WasCanceledByUser`.
 - **Theming** — `Dark`, `Light`, `Mica`, `HighContrast`, and `WindowsClassic`
   presets, plus fully customisable `GlassTheme` instances.
 - **Auto theme detection** — `GlassTheme.AutoDetect()` / `IsSystemDark()` follow
@@ -38,16 +41,20 @@ First public release. 🎉
   multi-line, and drop-down.
 - **Checkbox**, **expandable detail panel**, **determinate / indeterminate
   progress bars**, **countdown auto-close**, and **custom bitmap icons**.
+- **System sounds** — `GlassBuilder.Sound()` and the global
+  `GlassMessage.PlaySystemSounds` play the Windows sound matching the icon when a
+  dialog opens, like the classic `MessageBox`.
 - **Animations** — `Fade` (default), `SlideDown`, `Scale`, and `None`.
 - **Keyboard** — `Ctrl+C` copies title + message; `Enter` / `Esc` map to sensible
   results.
 - **Right-to-left** mirrored layout.
 - **Toast notifications** — `GlassToast` with six anchor positions, auto-stacking,
-  click actions, and an async variant.
+  click actions, and an async variant. Toasts are **multi-monitor aware**: they
+  auto-target the active window's screen (then the cursor's, then primary) and
+  stack per-screen; override with `GlassToastOptions.Screen`.
 - **Cross-target build** — .NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows);
   AnyCPU, so the library runs in both x86 and x64 processes.
 - **Release pipeline** — pushing a `v*` tag builds every target framework, runs
   the tests, and publishes a GitHub Release with notes and downloadable assets.
 
-[Unreleased]: ../../compare/v1.0.0...HEAD
-[1.0.0]: ../../releases/tag/v1.0.0
+[1.0.0.0]: ../../releases/tag/v1.0.0.0

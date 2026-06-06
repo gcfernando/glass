@@ -83,11 +83,12 @@ GlassMessage.Show(
 | Inline text / password / dropdown input | ❌ | ✅ |
 | Checkbox ("don't show again") | ❌ | ✅ |
 | Progress bar (in the dialog) | ❌ | ✅ |
+| Live progress updates (controller) | ❌ | ✅ |
 | Expandable "Show details" panel | ❌ | ✅ |
 | Countdown auto-close | ❌ | ✅ |
 | Custom bitmap icon | ❌ | ✅ |
-| `async` / awaitable + cancellable | ❌ | ✅ |
-| Toast notifications | ❌ | ✅ |
+| `async` / awaitable + cancellable (incl. rich dialogs) | ❌ | ✅ |
+| Toast notifications (multi-monitor aware) | ❌ | ✅ |
 | Full RTL layout | ⚠️ partial | ✅ |
 | `Ctrl+C` copies message | ✅ | ✅ |
 
@@ -111,6 +112,10 @@ GlassMessage.Show(
 <tr>
 <td align="center"><b>Countdown auto-close</b><br/><img src="Images/Countdown%20Auto-Close%20%20%2810%20s%29.png" width="430" alt="Countdown"/></td>
 <td align="center"><b>"Don't show again" checkbox</b><br/><img src="Images/Don't%20Show%20Again.png" width="430" alt="Checkbox"/></td>
+</tr>
+<tr>
+<td align="center"><b>Async builder — awaitable rich dialogs</b><br/><img src="Images/Async%20Builder%20%28ShowExAsync%29.png" width="430" alt="Async builder"/></td>
+<td align="center"><b>Live progress controller</b><br/><img src="Images/Live%20Progress%20Controller.png" width="430" alt="Live progress controller"/></td>
 </tr>
 </table>
 
@@ -176,8 +181,9 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 |---|---|
 | **Drop-in API** | `GlassMessage.Show(...)` overloads that mirror `MessageBox.Show` exactly |
 | **Fluent builder** | `GlassMessage.Create(...)` for composable dialogs |
-| **Async** | `GlassMessage.ShowAsync(...)` — non-blocking, awaitable, cancellable |
-| **Rich result** | `ShowEx()` returns button **+** checkbox state **+** typed input |
+| **Async** | `ShowAsync(...)` on the facade **and** the builder (`ShowAsync()` / `ShowExAsync()`) — non-blocking, awaitable, cancellable |
+| **Rich result** | `ShowEx()` / `ShowExAsync()` return button **+** checkbox state **+** typed input |
+| **Live progress** | `ShowProgress()` → a thread-safe `GlassProgressController` you update while work runs |
 | **Theming** | `Dark`, `Light`, `Mica`, `HighContrast`, `WindowsClassic` + custom themes |
 | **Auto theme** | `GlassTheme.AutoDetect()` follows the Windows light/dark/HC setting |
 | **Modern chrome** | Windows 11 rounded corners (DWM), Mica backdrop, Acrylic fallback |
@@ -187,10 +193,11 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 | **Progress** | Determinate and indeterminate (marquee) bars |
 | **Countdown** | Auto-confirm the default button with a live circular countdown |
 | **Custom icon** | Any 48×48 `Bitmap` (e.g. a product logo) |
+| **System sounds** | `Sound()` / `GlassMessage.PlaySystemSounds` play the icon's Windows sound on open |
 | **Animations** | `Fade` (default), `SlideDown`, `Scale`, `None` |
 | **Keyboard** | `Ctrl+C` copies title + message; `Enter`/`Esc` map to sensible results |
 | **RTL** | Full right-to-left mirrored layout |
-| **Toasts** | Six anchor positions, auto-stacking, click actions, async variant |
+| **Toasts** | Six anchor positions, auto-stacking, multi-monitor aware, click actions, async variant |
 | **Cross-target** | .NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows) |
 
 ---
@@ -645,6 +652,7 @@ private static async void SyncWorkspace()
 ```
 
 **Signature:** `Task<DialogResult> ShowAsync(string message, string title = "", MessageBoxIcon icon = None, MessageBoxButtons buttons = OK, CancellationToken ct = default)` (+ a theme-aware overload).
+**Rich dialogs:** for awaitable dialogs with input / checkbox / dropdown, use the builder's `ShowAsync()` / `ShowExAsync()` — see [§17](#-complete-usage-guide).
 
 </details>
 
@@ -751,6 +759,103 @@ GlassToast.Show("Deploying to staging-01.contoso.com…",    "CI/CD Pipeline", M
 **Positions:** `BottomRight` (default), `BottomLeft`, `TopRight`, `TopLeft`, `BottomCenter`, `TopCenter`.
 **Click action:** set `OnClick` — the toast runs your action and dismisses.
 **Await one:** `await GlassToast.ShowAsync(options)` completes when it closes.
+**Multi-monitor:** toasts auto-target the active window's screen (then the cursor's, then primary) and stack **per-screen**. Pin one to a specific monitor with `Screen`:
+
+```csharp
+GlassToast.Show(new GlassToastOptions
+{
+    Message  = "Render finished on the second display.",
+    Title    = "Done",
+    Icon     = MessageBoxIcon.Information,
+    Position = ToastPosition.TopRight,
+    Screen   = Screen.AllScreens[1],   // null = auto (active window → cursor → primary)
+});
+```
+
+</details>
+
+<details>
+<summary><b>17 · Async builder — <code>ShowAsync()</code> / <code>ShowExAsync()</code></b></summary>
+
+<br/>
+
+<img src="Images/Async%20Builder%20%28ShowExAsync%29.png" width="460" alt="Async builder"/>
+
+The whole builder is awaitable too — so input / checkbox / dropdown dialogs run without blocking the UI thread. `ShowExAsync()` returns the full `GlassResult`; both accept a `CancellationToken` (cancelling yields `DialogResult.Cancel`).
+
+```csharp
+var r = await GlassMessage.Create("Create a shared link for 'Annual_Report_Q4_2025.xlsx'.")
+    .Title("Create Shared Link")
+    .Icon(MessageBoxIcon.Question)
+    .InputText("Link label", "Finance review — Q1")
+    .CheckBox("Allow downloading", defaultChecked: true)
+    .Buttons("Create link", "Cancel")
+    .ShowExAsync();                     // or .ShowAsync() for just the DialogResult
+
+if (r.Button == DialogResult.OK)
+{
+    // r.InputText, r.CheckBoxChecked
+}
+```
+
+**Methods:** `Task<DialogResult> ShowAsync(CancellationToken = default)` · `Task<GlassResult> ShowExAsync(CancellationToken = default)`.
+
+</details>
+
+<details>
+<summary><b>18 · Live progress — <code>ShowProgress()</code> + <code>GlassProgressController</code></b></summary>
+
+<br/>
+
+<img src="Images/Live%20Progress%20Controller.png" width="460" alt="Live progress controller"/>
+
+`ShowProgress()` opens a **non-blocking** progress dialog and hands back a thread-safe `GlassProgressController`. Drive the bar and caption from a worker, then `Complete()` it — or detect a user cancel via `WasCanceledByUser`.
+
+```csharp
+var progress = GlassMessage.Create("Preparing backup…")
+    .Title("OneDrive Backup")
+    .Icon(MessageBoxIcon.Information)
+    .Progress(0, 100)
+    .Buttons("Cancel")
+    .ShowProgress();
+
+for (var i = 0; i <= 100 && !progress.WasCanceledByUser; i += 5)
+{
+    progress.SetValue(i);
+    progress.SetMessage($"Backing up…  {i}%");
+    await Task.Delay(80);
+}
+
+if (!progress.WasCanceledByUser) progress.Complete();
+await progress.Completion;            // completes when the dialog closes
+```
+
+**Members:** `SetValue(int)` · `SetMessage(string)` · `Complete()` · `Close(DialogResult)` · `Completion` (`Task<GlassResult>`) · `WasCanceledByUser` · `IsClosed`. All update methods marshal onto the UI thread, so they're safe to call from any thread.
+
+</details>
+
+<details>
+<summary><b>19 · System sounds — <code>Sound()</code></b></summary>
+
+<br/>
+
+<img src="Images/Icon%20System%20Sound.png" width="460" alt="Icon system sound"/>
+
+Play the Windows system sound that matches the icon (Information / Warning / Error / Question) when the dialog opens, just like the classic `MessageBox`.
+
+```csharp
+GlassMessage.Create("This dialog played the 'Critical Stop' sound as it opened.")
+    .Title("Icon System Sound")
+    .Icon(MessageBoxIcon.Error)
+    .Sound()                           // per-dialog opt-in
+    .Buttons(MessageBoxButtons.OK)
+    .Show();
+
+// …or enable it for every dialog at startup:
+GlassMessage.PlaySystemSounds = true;
+```
+
+**Per-dialog:** `Sound(bool enable = true)` wins over the global. **Global:** `GlassMessage.PlaySystemSounds` (default `false`).
 
 </details>
 
@@ -765,7 +870,7 @@ GlassToast.Show("Deploying to staging-01.contoso.com…",    "CI/CD Pipeline", M
 - **Each `Demo_*` method** is self-contained and demonstrates exactly one capability with realistic copy.
 
 <details>
-<summary><b>Full demo → feature map (26 demos)</b></summary>
+<summary><b>Full demo → feature map (29 demos)</b></summary>
 
 <br/>
 
@@ -796,6 +901,9 @@ GlassToast.Show("Deploying to staging-01.contoso.com…",    "CI/CD Pipeline", M
 | Toast — Stacking | `Demo_ToastStack` | auto-stacking toasts |
 | Toast — Four Corners | `Demo_ToastCorners` | `ToastPosition` |
 | Async ShowAsync | `Demo_Async` | `await GlassMessage.ShowAsync` |
+| Async Builder (ShowExAsync) | `Demo_AsyncBuilder` | builder `ShowExAsync()` |
+| Live Progress Controller | `Demo_ProgressController` | `ShowProgress()` + `GlassProgressController` |
+| Icon System Sound | `Demo_Sound` | `Sound()` |
 | All Buttons + ShowEx Rich Result | `Demo_ShowEx` | full `GlassResult` |
 
 </details>
@@ -829,6 +937,7 @@ GlassBuilder Create(string message);
 // Global defaults:
 static GlassTheme DefaultTheme      { get; set; }  // = GlassTheme.Default
 static bool       UseRoundedCorners { get; set; }  // = false
+static bool       PlaySystemSounds  { get; set; }  // = false
 ```
 
 </details>
@@ -848,6 +957,7 @@ static bool       UseRoundedCorners { get; set; }  // = false
 | `Owner(IWin32Window)` | Owner window (centres on / stays above it) |
 | `Animation(GlassAnimation)` | Open/close animation |
 | `RoundedCorners(bool = true)` | Per-dialog rounded-corner override |
+| `Sound(bool = true)` | Play the icon's system sound when the dialog opens |
 | `AutoClose(int ms)` | Auto-confirm the default button after a delay |
 | `CheckBox(string label, bool defaultChecked = false)` | Add a checkbox |
 | `InputText(string placeholder = "", string defaultValue = "")` | Single-line input |
@@ -860,6 +970,9 @@ static bool       UseRoundedCorners { get; set; }  // = false
 | `RightToLeft(bool = true)` | Mirror layout for RTL |
 | `Show()` | Show modally → `DialogResult` |
 | `ShowEx()` | Show modally → `GlassResult` |
+| `ShowAsync(CancellationToken = default)` | Show non-blocking → `Task<DialogResult>` |
+| `ShowExAsync(CancellationToken = default)` | Show non-blocking → `Task<GlassResult>` |
+| `ShowProgress()` | Show non-blocking → `GlassProgressController` (live updates) |
 
 </details>
 
@@ -869,10 +982,19 @@ static bool       UseRoundedCorners { get; set; }  // = false
 <br/>
 
 ```csharp
-// GlassResult (from ShowEx) — implicitly converts to DialogResult
+// GlassResult (from ShowEx / ShowExAsync) — implicitly converts to DialogResult
 DialogResult Button          { get; }   // the button pressed
 bool         CheckBoxChecked { get; }   // checkbox state
 string       InputText       { get; }   // typed/selected value (never null)
+
+// GlassProgressController (from builder.ShowProgress()) — thread-safe, non-blocking
+void               SetValue(int value);          // update the determinate bar
+void               SetMessage(string message);   // update the caption
+void               Complete();                   // close with DialogResult.OK
+void               Close(DialogResult = OK);      // close with an explicit result
+Task<GlassResult>  Completion        { get; }    // completes when the dialog closes
+bool               WasCanceledByUser { get; }    // user dismissed vs Complete()/Close()
+bool               IsClosed          { get; }
 
 // GlassToast — static facade
 GlassToast.Show(string message, int durationMs = 4_000);
@@ -892,6 +1014,7 @@ class GlassToastOptions
     ToastPosition  Position          { get; set; } = BottomRight;
     Action         OnClick           { get; set; }
     bool?          UseRoundedCorners { get; set; }
+    Screen         Screen            { get; set; }   // null = auto-target the active screen
 }
 
 // Enums
@@ -914,15 +1037,17 @@ enum ToastPosition  { BottomRight, BottomLeft, TopRight, TopLeft, BottomCenter, 
 |---|---|---|---|
 | `GlassMessage.DefaultTheme` | `GlassTheme` | `GlassTheme.Default` (dark) | Theme when none is specified |
 | `GlassMessage.UseRoundedCorners` | `bool` | `false` | Global rounded-corners default |
+| `GlassMessage.PlaySystemSounds` | `bool` | `false` | Play the icon's system sound on open |
 
 ```csharp
 GlassMessage.UseRoundedCorners = true;
 GlassMessage.DefaultTheme      = GlassTheme.AutoDetect();
+GlassMessage.PlaySystemSounds  = true;   // optional — off by default
 ```
 
 Everything else is per-dialog via the builder. The **only required** value is the `message`.
 
-**Toast options** (`GlassToastOptions`): `Message`, `Title`, `Icon` (`None`), `Theme` (falls back to `DefaultTheme`), `DurationMs` (`4000`), `Position` (`BottomRight`), `OnClick`, `UseRoundedCorners` (`null` → global).
+**Toast options** (`GlassToastOptions`): `Message`, `Title`, `Icon` (`None`), `Theme` (falls back to `DefaultTheme`), `DurationMs` (`4000`), `Position` (`BottomRight`), `OnClick`, `UseRoundedCorners` (`null` → global), `Screen` (`null` → auto-target the active screen).
 
 ---
 
@@ -998,6 +1123,7 @@ Glass/
 │   ├── GlassDialog.cs            # WinForms dialog (rendering, layout, animations)
 │   ├── GlassDialogConfig.cs      # Internal settings bag
 │   ├── GlassResult.cs            # Rich result (button + checkbox + input)
+│   ├── GlassProgressController.cs# Live handle for non-blocking progress dialogs
 │   ├── GlassTheme.cs             # Palette + presets + AutoDetect
 │   ├── GlassToast.cs             # Toast facade, options, and toast window
 │   ├── GlassButton.cs            # Themed button control

@@ -100,6 +100,8 @@ internal sealed class GlassDialog : Form
     private GlassButton _countdownBtn;            // the button whose label shows the countdown
     private string _countdownBaseLabel = string.Empty;  // its caption without the " (Ns)" suffix
     private Font _detailFont;
+    private GlassProgressPanel _progressPanel;   // kept so a controller can update it live
+    private Label _messageLabel;                  // kept so a controller can update the text
 
     // Surfaced to GlassMessage.CoreEx() so the builder result carries them back.
     internal bool CheckBoxChecked => _checkBoxCtrl?.Checked ?? false;
@@ -174,6 +176,26 @@ internal sealed class GlassDialog : Form
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SendMessage(IntPtr hwnd, uint msg, uint wParam, string lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool MessageBeep(uint type);
+
+    // Plays the Windows system sound matching the dialog's icon, mirroring what the
+    // classic MessageBox does. Best-effort: a failed beep is never fatal.
+    private void PlayIconSound()
+    {
+        // MB_ICONHAND/ERROR=0x10, MB_ICONQUESTION=0x20, MB_ICONEXCLAMATION/WARNING=0x30,
+        // MB_ICONASTERISK/INFORMATION=0x40, MB_OK (default ding)=0x0.
+        var type = _cfg.Icon switch
+        {
+            MessageBoxIcon.Error => 0x10u,
+            MessageBoxIcon.Question => 0x20u,
+            MessageBoxIcon.Warning => 0x30u,
+            MessageBoxIcon.Information => 0x40u,
+            _ => 0x0u,
+        };
+        try { _ = MessageBeep(type); } catch { /* sound is a nicety; ignore failures */ }
+    }
 
     // Which backdrop/corner treatments actually took effect on this machine.
     private bool _acrylicEnabled;
@@ -321,6 +343,8 @@ internal sealed class GlassDialog : Form
         _detailToggle = null;
         _countdownBtn = null;
         _countdownBaseLabel = string.Empty;
+        _progressPanel = null;
+        _messageLabel = null;
         InvalidateCache();
 
         _iconBitmap = _cfg.CustomIcon ?? GetCachedSystemIcon(_cfg.Icon);
@@ -482,6 +506,24 @@ internal sealed class GlassDialog : Form
         return (w, h);
     }
 
+    // Where the secondary controls (checkbox, detail link) align horizontally.
+    // A full-width control (input / progress) defines the content margin, so they
+    // line up with it (left edge in LTR, right edge in RTL). Otherwise they align to
+    // the message-text column so they sit under the text rather than out by the icon.
+    private bool AlignSecondaryToMargin => _cfg.HasInput || _cfg.HasProgress;
+
+    private int SecondaryAvailW(int fw) => AlignSecondaryToMargin ? fw - (Pad * 2) : _msgW;
+
+    private int SecondaryX(int fw, int width)
+    {
+        if (_cfg.RightToLeft)
+        {
+            var rightEdge = AlignSecondaryToMargin ? fw - Pad : _msgLeft + _msgW;
+            return rightEdge - width;
+        }
+        return AlignSecondaryToMargin ? Pad : _msgLeft;
+    }
+
     // Creates the child controls top-to-bottom, advancing 'y' as each section is
     // placed. Only the sections enabled in the config are added.
     private void AddControls(int fw, int fh)
@@ -504,7 +546,7 @@ internal sealed class GlassDialog : Form
 
         if (_cfg.Message.Length > 0)
         {
-            Controls.Add(new Label
+            _messageLabel = new Label
             {
                 Text = _cfg.Message,
                 Font = _theme.MessageFont,
@@ -516,7 +558,8 @@ internal sealed class GlassDialog : Form
                 Bounds = new Rectangle(_msgLeft, y, _msgW, _contentH),
                 TextAlign = ContentAlignment.TopLeft,
                 AccessibleRole = AccessibleRole.StaticText,
-            });
+            };
+            Controls.Add(_messageLabel);
         }
 
         y += _contentH;
@@ -524,12 +567,13 @@ internal sealed class GlassDialog : Form
         if (_cfg.HasProgress)
         {
             y += Pad;
-            Controls.Add(new GlassProgressPanel(_theme, _cfg.ProgressValue, _cfg.ProgressMax)
+            _progressPanel = new GlassProgressPanel(_theme, _cfg.ProgressValue, _cfg.ProgressMax)
             {
                 Bounds = new Rectangle(Pad, y, fw - (Pad * 2), ProgressH),
                 AccessibleName = "Progress",
                 AccessibleRole = AccessibleRole.ProgressBar,
-            });
+            };
+            Controls.Add(_progressPanel);
             y += ProgressH;
         }
 
@@ -661,7 +705,6 @@ internal sealed class GlassDialog : Form
                 Text = _cfg.CheckBoxLabel,
                 Font = _theme.MessageFont,
                 Checked = _cfg.CheckBoxDefault,
-                Location = new Point(_msgLeft, y),
                 AccessibleRole = AccessibleRole.CheckButton,
             };
             // Size the checkbox explicitly rather than relying on AutoSize: a
@@ -669,9 +712,11 @@ internal sealed class GlassDialog : Form
             // SuspendLayout and ends with ResumeLayout(false), which skips the
             // layout pass that AutoSize needs — leaving the label truncated.
             _checkBoxCtrl.AutoSize = false;
-            var checkAvailW = fw - _msgLeft - Pad;
+            var checkAvailW = SecondaryAvailW(fw);
             var checkPref = _checkBoxCtrl.GetPreferredSize(Size.Empty);
-            _checkBoxCtrl.Size = new Size(Math.Min(checkPref.Width, checkAvailW), CheckH);
+            var checkW = Math.Min(checkPref.Width, checkAvailW);
+            _checkBoxCtrl.Size = new Size(checkW, CheckH);
+            _checkBoxCtrl.Location = new Point(SecondaryX(fw, checkW), y);
             Controls.Add(_checkBoxCtrl);
             y += CheckH;
         }
@@ -679,16 +724,22 @@ internal sealed class GlassDialog : Form
         if (_cfg.HasDetail)
         {
             y += Scale(8);
+            var detailText = _isExpanded ? "Hide details ▲" : "Show details ▼";
+            // Align like the checkbox; in RTL anchor the link to its right edge using
+            // the measured width (AutoSize width is unreliable here because the layout
+            // pass is skipped under ResumeLayout(false)).
+            var detailW = TextRenderer.MeasureText(detailText, _theme.ButtonFont).Width;
+            var detailX = SecondaryX(fw, detailW);
             _detailToggle = new LinkLabel
             {
-                Text = _isExpanded ? "Hide details ▲" : "Show details ▼",
+                Text = detailText,
                 Font = _theme.ButtonFont,
                 ForeColor = _theme.AccentColor,
                 LinkColor = _theme.AccentColor,
                 ActiveLinkColor = _theme.BorderColor,
                 BackColor = Color.Transparent,
                 AutoSize = true,
-                Location = new Point(_msgLeft, y),
+                Location = new Point(detailX, y),
                 AccessibleName = "Toggle detail panel",
             };
             _detailToggle.LinkClicked += OnDetailToggleClick;
@@ -966,6 +1017,13 @@ internal sealed class GlassDialog : Form
     {
         base.OnShown(e);
 
+        // Play the icon's system sound once the window is up, if requested (per-dialog
+        // setting wins, otherwise the global default).
+        if (_cfg.PlaySound ?? GlassMessage.PlaySystemSounds)
+        {
+            PlayIconSound();
+        }
+
         // Begin the entrance animation and the countdown only once the window is
         // actually on screen.
         if (_cfg.Animation != GlassAnimation.None)
@@ -1017,6 +1075,27 @@ internal sealed class GlassDialog : Form
         }
     }
 
+    // Closes the dialog from outside (e.g. an async cancellation) with an explicit
+    // result, running the normal close animation. Unlike Form.Close(), this routes
+    // through BeginClose so the requested result is honoured rather than being
+    // overridden by the escape result in OnFormClosing.
+    internal void RequestClose(DialogResult result) => BeginClose(result);
+
+    // Live-update hooks used by GlassProgressController. Both are no-ops when the
+    // relevant control isn't present, so callers never have to check.
+    internal void SetProgressValue(int value) => _progressPanel?.SetValue(value);
+
+    internal void SetMessageText(string message)
+    {
+        if (_messageLabel == null || _messageLabel.IsDisposed)
+        {
+            return;
+        }
+
+        _messageLabel.Text = message ?? string.Empty;
+        _messageLabel.Invalidate();
+    }
+
     // Begins closing with the given result. Guard against re-entry, stop the
     // countdown, then either set the result immediately (no animation) or kick off
     // the reverse animation; OnFadeTick applies the result when it finishes.
@@ -1033,7 +1112,7 @@ internal sealed class GlassDialog : Form
 
         if (_cfg.Animation == GlassAnimation.None)
         {
-            DialogResult = _pendingResult;
+            ApplyResultAndClose();
             return;
         }
 
@@ -1056,6 +1135,16 @@ internal sealed class GlassDialog : Form
 
         DisposeFadeTimer();
         StartFadeTimer();
+    }
+
+    // Commits the chosen result and closes the window. Setting DialogResult is what
+    // ends a modal ShowDialog loop, but it does NOT close a *modeless* form (the one
+    // ShowAsync uses), so Close() is called explicitly to cover both paths. Close()
+    // is harmless on a modal dialog whose result is already set.
+    private void ApplyResultAndClose()
+    {
+        DialogResult = _pendingResult;
+        Close();
     }
 
     private void StartFadeTimer()
@@ -1114,7 +1203,7 @@ internal sealed class GlassDialog : Form
         if (_fadingOut)
         {
             _scaleActive = false;
-            DialogResult = _pendingResult;
+            ApplyResultAndClose();
         }
         else
         {
@@ -1493,7 +1582,8 @@ internal sealed class GlassDialog : Form
     private sealed class GlassProgressPanel : Control
     {
         private readonly GlassTheme _theme;
-        private readonly int _value, _max;
+        private int _value;
+        private readonly int _max;
         private float _phase;   // marquee animation phase, advanced each tick
         private readonly System.Windows.Forms.Timer _ticker;
         private GraphicsPath _trackPath;
@@ -1516,6 +1606,25 @@ internal sealed class GlassDialog : Form
         }
 
         protected override void OnResize(EventArgs e) { _trackPath?.Dispose(); _trackPath = null; base.OnResize(e); Invalidate(); }
+
+        // Live update of a determinate bar's value (clamped to 0..max). Ignored for an
+        // indeterminate (marquee) bar, whose value stays -1.
+        public void SetValue(int value)
+        {
+            if (_value == -1)
+            {
+                return;
+            }
+
+            var clamped = Math.Max(0, Math.Min(_max, value));
+            if (clamped == _value)
+            {
+                return;
+            }
+
+            _value = clamped;
+            Invalidate();
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -1675,17 +1784,23 @@ internal sealed class GlassDialog : Form
                 }
             }
 
-            var textX = _rtl ? 0 : box + Gap;
-            var textW = Width - box - Gap;
+            // Lay the label tightly beside the box — to its right in LTR, to its left
+            // in RTL. The rectangle is measured and positioned explicitly rather than
+            // relying on TextFormatFlags.Right, which gets mirrored under an RTL device
+            // context and would otherwise push the label far from the box.
+            var avail = Math.Max(1, Width - box - Gap);
             var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
-                        (_rtl ? TextFormatFlags.Right | TextFormatFlags.RightToLeft : TextFormatFlags.Left);
-            TextRenderer.DrawText(g, Text, Font, new Rectangle(textX, 0, textW, Height), ForeColor, flags);
+                        TextFormatFlags.EndEllipsis |
+                        (_rtl ? TextFormatFlags.RightToLeft : TextFormatFlags.Default);
+            var tw = Math.Min(avail, TextRenderer.MeasureText(g, Text, Font, new Size(avail, Height), flags).Width);
+            var textX = _rtl ? Width - box - Gap - tw : box + Gap;
+            TextRenderer.DrawText(g, Text, Font, new Rectangle(textX, 0, tw, Height), ForeColor,
+                flags | (_rtl ? TextFormatFlags.Right : TextFormatFlags.Left));
 
             if (Focused)
             {
-                var tw = Math.Min(textW, TextRenderer.MeasureText(Text, Font).Width + 2);
                 using var fp = new Pen(Color.FromArgb(130, _theme.AccentColor), 1f) { DashStyle = DashStyle.Dot };
-                g.DrawRectangle(fp, new Rectangle(_rtl ? Width - box - Gap - tw : textX, 1, Math.Max(1, tw), Height - 3));
+                g.DrawRectangle(fp, new Rectangle(textX, 1, Math.Max(1, tw), Height - 3));
             }
         }
     }
