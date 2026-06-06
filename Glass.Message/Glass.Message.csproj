@@ -57,6 +57,8 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright © 2026 Gehan Fernando</Copyright>
     <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/gcfernando/glass</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/gcfernando/glass</PackageProjectUrl>
     <!-- Ship a debug-symbols (.snupkg) package alongside the main one. -->
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

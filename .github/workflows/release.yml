@@ -104,15 +104,46 @@ jobs:
           --configuration Release
           --no-restore
 
-      # Produce the NuGet package (+ symbols). One .nupkg holds every TFM.
+      # Pull the CHANGELOG section for THIS version once, up front, so it can be
+      # embedded BOTH in the NuGet package (as release notes) and in the GitHub
+      # Release body below. Always runs; falls back to a short note if missing.
+      - name: Extract release notes from CHANGELOG
+        shell: pwsh
+        run: |
+          $ver  = '${{ steps.ver.outputs.version }}'
+          $path = 'CHANGELOG.md'
+          $buf  = @()
+          if (Test-Path $path) {
+            $capture = $false
+            foreach ($line in Get-Content $path) {
+              if ($line -match '^##\s+\[') {
+                if ($capture) { break }   # next version section -> stop
+                if ($line -match "^##\s+\[$([regex]::Escape($ver))\]") { $capture = $true; continue }
+              }
+              if ($capture) { $buf += $line }
+            }
+          }
+          $notes = ($buf -join "`n").Trim()
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+            $notes = "Release v$ver. See CHANGELOG.md for details."
+            Write-Warning "No CHANGELOG section found for $ver; using a fallback."
+          }
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+          Write-Host "----- release notes for v$ver -----`n$notes"
+
+      # Produce the NuGet package (+ symbols). One .nupkg holds every TFM, and the
+      # CHANGELOG section is embedded as the package's release notes — MSBuild reads
+      # the PackageReleaseNotes environment variable as the matching property.
       - name: Pack NuGet package
-        run: >
-          dotnet pack Glass.Message/Glass.Message.csproj
-          --configuration Release
-          --no-build
-          --output artifacts
-          -p:Version=${{ steps.ver.outputs.version }}
-          -p:PackageVersion=${{ steps.ver.outputs.version }}
+        shell: pwsh
+        run: |
+          $env:PackageReleaseNotes = Get-Content release-notes.md -Raw
+          dotnet pack Glass.Message/Glass.Message.csproj `
+            --configuration Release `
+            --no-build `
+            --output artifacts `
+            -p:Version=${{ steps.ver.outputs.version }} `
+            -p:PackageVersion=${{ steps.ver.outputs.version }}
 
       # Zip the built DLL + XML docs for each target framework individually, so
       # the Release page offers a direct per-framework download.
@@ -169,33 +200,6 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
-      # Pull the section for THIS version out of CHANGELOG.md so it becomes the
-      # release description. This is what gives every tag proper, curated notes.
-      - name: Extract release notes from CHANGELOG
-        if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
-        shell: pwsh
-        run: |
-          $ver  = '${{ steps.ver.outputs.version }}'
-          $path = 'CHANGELOG.md'
-          $buf  = @()
-          if (Test-Path $path) {
-            $capture = $false
-            foreach ($line in Get-Content $path) {
-              if ($line -match '^##\s+\[') {
-                if ($capture) { break }   # next version section -> stop
-                if ($line -match "^##\s+\[$([regex]::Escape($ver))\]") { $capture = $true; continue }
-              }
-              if ($capture) { $buf += $line }
-            }
-          }
-          $notes = ($buf -join "`n").Trim()
-          if ([string]::IsNullOrWhiteSpace($notes)) {
-            $notes = "Release v$ver. See CHANGELOG.md for details."
-            Write-Warning "No CHANGELOG section found for $ver; using a fallback."
-          }
-          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
-          Write-Host "----- release notes for v$ver -----`n$notes"
-
       # Publish the GitHub Release and attach every artifact so anyone visiting
       # the repo can download them from the Releases page.
       #   * On a tag push, this CREATES the Release for the tag automatically.
@@ -215,3 +219,23 @@ jobs:
             artifacts/*.nupkg
             artifacts/*.snupkg
             artifacts/*.zip
+
+      # Publish the package to NuGet.org. Runs only for a real release (tag push or
+      # a published GitHub Release) and only when the NUGET_API_KEY secret exists,
+      # so forks and manual test runs never publish. The matching .snupkg in the
+      # same folder is uploaded automatically. --skip-duplicate makes re-runs safe
+      # (re-tagging or re-running won't fail if the version is already on NuGet).
+      - name: Push to NuGet.org
+        if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+            Write-Warning "NUGET_API_KEY secret is not set — skipping NuGet.org publish."
+            exit 0
+          }
+          dotnet nuget push "artifacts/*.nupkg" `
+            --api-key $env:NUGET_API_KEY `
+            --source https://api.nuget.org/v3/index.json `
+            --skip-duplicate
