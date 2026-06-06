@@ -21,7 +21,7 @@ Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder �
 
 <br/>
 
-<img src="Images/Feature%20Galary.png" width="420" alt="Glass.Message feature gallery"/>
+<img src="Images/Feature%20Gallery.png" width="420" alt="Glass.Message feature gallery"/>
 
 <em>One tiny library. Every dialog your app will ever need.</em>
 
