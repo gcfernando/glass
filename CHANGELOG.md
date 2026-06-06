@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > without installing .NET. The notes below become the release description
 > automatically. See the [Releases page](../../releases).
 
-## [1.0.0.0] - 2026-06-06
+## [1.0.0] - 2026-06-06
 
 First public release. 🎉
 
@@ -57,4 +57,4 @@ First public release. 🎉
 - **Release pipeline** — pushing a `v*` tag builds every target framework, runs
   the tests, and publishes a GitHub Release with notes and downloadable assets.
 
-[1.0.0.0]: ../../releases/tag/v1.0.0.0
+[1.0.0]: ../../releases/tag/v1.0.0
