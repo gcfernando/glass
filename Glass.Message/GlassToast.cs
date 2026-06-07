@@ -276,6 +276,9 @@ public static class GlassToast
         private System.Windows.Forms.Timer _stayTimer;
         private bool _fadingOut;
         private int _fadeStep;
+        // Measured once in MeasureAndSize and reused at paint time, so the title is
+        // never re-measured on every repaint (and the two stay in lock-step).
+        private int _titleH;
         private const int _fadeTicks = 7;
         private const int _toastWidth = 360;
         private const int _pad = 12;
@@ -319,19 +322,17 @@ public static class GlassToast
             var textX = _pad + (hasIcon ? _iconW + _iconGap : 0);
             var textW = _toastWidth - textX - _pad;
 
-            var titleH = 0;
-            if (hasTitle)
-            {
-                titleH = TextRenderer.MeasureText(_opts.Title, _theme.TitleFont,
-                    new Size(textW, int.MaxValue), TextFormatFlags.SingleLine).Height;
-            }
+            _titleH = hasTitle
+                ? TextRenderer.MeasureText(_opts.Title, _theme.TitleFont,
+                    new Size(textW, int.MaxValue), TextFormatFlags.SingleLine).Height
+                : 0;
 
             var msgH = TextRenderer.MeasureText(_opts.Message, _theme.MessageFont,
                 new Size(textW, int.MaxValue),
                 TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
 
             var gap = (hasTitle && msgH > 0) ? 3 : 0;
-            var contentH = titleH + gap + msgH;
+            var contentH = _titleH + gap + msgH;
             var totalH = _pad + Math.Max(contentH, hasIcon ? _iconW : 0) + _pad;
             ClientSize = new Size(_toastWidth, totalH);
         }
@@ -455,12 +456,10 @@ public static class GlassToast
             var y = _pad;
             if (hasTitle)
             {
-                var titleH = TextRenderer.MeasureText(_opts.Title, _theme.TitleFont,
-        new Size(textW, int.MaxValue), TextFormatFlags.SingleLine).Height;
                 TextRenderer.DrawText(g, _opts.Title, _theme.TitleFont,
-                    new Rectangle(textX, y, textW, titleH), _theme.TitleColor,
+                    new Rectangle(textX, y, textW, _titleH), _theme.TitleColor,
                     TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
-                y += titleH + 3;
+                y += _titleH + 3;
             }
 
             TextRenderer.DrawText(g, _opts.Message, _theme.MessageFont,

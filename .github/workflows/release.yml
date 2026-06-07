@@ -7,6 +7,22 @@
 #  ...or when you publish a Release from the GitHub UI. Either way the tag
 #  (e.g. v1.2.3) becomes the package version.
 #
+#  The pipeline is split into focused jobs that hand work to each other through
+#  job outputs and uploaded artifacts:
+#
+#      metadata ─► test ─┬─► package ─┐
+#                        └─► demo ────┴─► release ─► publish-nuget
+#
+#    * metadata       resolves the version and the CHANGELOG release notes once.
+#    * test           builds the library and runs the unit tests (the gate).
+#    * package        produces the NuGet package, symbols, and per-TFM DLL zips.
+#    * demo           publishes the self-contained demo app (x64 + x86).
+#    * release        creates the GitHub Release and attaches every artifact.
+#    * publish-nuget  pushes the package to NuGet.org.
+#
+#  package and demo run in parallel once test passes, so a release is as fast as
+#  its slowest branch rather than the sum of every step.
+#
 #  Produces and attaches to the Release (so anyone can download from the repo's
 #  Releases page — no NuGet account needed):
 #    * Glass.Message.<ver>.nupkg     — one NuGet package containing ALL four
@@ -18,8 +34,9 @@
 #    * Glass.Demo-<ver>-win-x64.zip   — runnable, self-contained demo (x64).
 #    * Glass.Demo-<ver>-win-x86.zip   — runnable, self-contained demo (x86).
 #
-#  NOTE: runs on Windows because the library targets .NET Framework 4.8.1 and
-#  Windows Forms, which only build on Windows.
+#  NOTE: the build/test/package/demo jobs run on Windows because the library
+#  targets .NET Framework 4.8.1 and Windows Forms, which only build on Windows.
+#  The lightweight metadata/release/publish jobs run on Linux.
 # -----------------------------------------------------------------------------
 
 name: Release
@@ -40,32 +57,35 @@ on:
         description: "Version to build (e.g. 1.2.3)"
         required: true
 
-# Needed so the workflow can upload assets onto the Release.
+# Needed so the release job can upload assets onto the Release.
 permissions:
   contents: write
 
+# Serialise releases for the same ref. cancel-in-progress is intentionally false:
+# a run that has reached the publish stage must never be killed mid-flight, since a
+# NuGet push cannot be rolled back. Overlapping runs queue instead of racing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
 jobs:
-  build:
-    runs-on: windows-latest
-
-    env:
-      Configuration: Release
-      DOTNET_NOLOGO: "true"
-      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-
+  # ---------------------------------------------------------------------------
+  #  metadata — resolve the version and CHANGELOG notes ONCE, then share them
+  #  with every downstream job via an output (version) and an artifact (notes).
+  #  Runs on Linux because it touches no .NET build tooling.
+  # ---------------------------------------------------------------------------
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # Install the modern .NET SDKs. .NET Framework 4.8.1's targeting pack is
-      # already present on the windows-latest image.
-      - name: Setup .NET SDKs (8 / 9 / 10)
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.x
 
       # Resolve the version (strip a leading "v") from whichever trigger fired:
       #   push tag     -> github.ref_name        (e.g. v1.2.3)
@@ -85,28 +105,9 @@ jobs:
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Building version $v"
 
-      - name: Restore
-        run: dotnet restore Glass.sln
-
-      # Build only the library (all four TFMs at once via its <TargetFrameworks>).
-      - name: Build library
-        run: >
-          dotnet build Glass.Message/Glass.Message.csproj
-          --configuration Release
-          --no-restore
-          -p:Version=${{ steps.ver.outputs.version }}
-          -p:ContinuousIntegrationBuild=true
-
-      # Run the unit tests (net8.0-windows). A failure here stops the release.
-      - name: Test
-        run: >
-          dotnet test Glass.Message.Tests/Glass.Message.Tests.csproj
-          --configuration Release
-          --no-restore
-
-      # Pull the CHANGELOG section for THIS version once, up front, so it can be
-      # embedded BOTH in the NuGet package (as release notes) and in the GitHub
-      # Release body below. Always runs; falls back to a short note if missing.
+      # Pull the CHANGELOG section for THIS version once, so it can be embedded
+      # BOTH in the NuGet package (as release notes) and in the GitHub Release
+      # body. Always runs; falls back to a short note if the section is missing.
       - name: Extract release notes from CHANGELOG
         shell: pwsh
         run: |
@@ -131,6 +132,89 @@ jobs:
           Set-Content -Path release-notes.md -Value $notes -Encoding utf8
           Write-Host "----- release notes for v$ver -----`n$notes"
 
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  #  test — the quality gate. Builds the library and runs the unit tests; every
+  #  packaging job depends on this passing.
+  # ---------------------------------------------------------------------------
+  test:
+    runs-on: windows-latest
+    needs: metadata
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install the modern .NET SDKs. .NET Framework 4.8.1's targeting pack is
+      # already present on the windows-latest image.
+      - name: Setup .NET SDKs (8 / 9 / 10)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore Glass.sln
+
+      # Build only the library (all four TFMs at once via its <TargetFrameworks>).
+      - name: Build library
+        run: >
+          dotnet build Glass.Message/Glass.Message.csproj
+          --configuration Release
+          --no-restore
+          -p:Version=${{ needs.metadata.outputs.version }}
+          -p:ContinuousIntegrationBuild=true
+
+      # Run the unit tests (net8.0-windows). A failure here stops the release.
+      - name: Test
+        run: >
+          dotnet test Glass.Message.Tests/Glass.Message.Tests.csproj
+          --configuration Release
+          --no-restore
+
+  # ---------------------------------------------------------------------------
+  #  package — build the NuGet package (+ symbols) and a per-framework DLL zip.
+  #  Runs in parallel with the demo job once the tests pass.
+  # ---------------------------------------------------------------------------
+  package:
+    runs-on: windows-latest
+    needs: [metadata, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDKs (8 / 9 / 10)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore Glass.Message/Glass.Message.csproj
+
+      - name: Build library
+        run: >
+          dotnet build Glass.Message/Glass.Message.csproj
+          --configuration Release
+          --no-restore
+          -p:Version=${{ needs.metadata.outputs.version }}
+          -p:ContinuousIntegrationBuild=true
+
+      # Bring back the CHANGELOG notes so they can be embedded in the package.
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+
       # Produce the NuGet package (+ symbols). One .nupkg holds every TFM, and the
       # CHANGELOG section is embedded as the package's release notes — MSBuild reads
       # the PackageReleaseNotes environment variable as the matching property.
@@ -142,15 +226,15 @@ jobs:
             --configuration Release `
             --no-build `
             --output artifacts `
-            -p:Version=${{ steps.ver.outputs.version }} `
-            -p:PackageVersion=${{ steps.ver.outputs.version }}
+            -p:Version=${{ needs.metadata.outputs.version }} `
+            -p:PackageVersion=${{ needs.metadata.outputs.version }}
 
       # Zip the built DLL + XML docs for each target framework individually, so
       # the Release page offers a direct per-framework download.
       - name: Package per-target-framework DLLs
         shell: pwsh
         run: |
-          $ver  = '${{ steps.ver.outputs.version }}'
+          $ver  = '${{ needs.metadata.outputs.version }}'
           $tfms = 'net481','net8.0-windows','net9.0-windows','net10.0-windows'
           $bin  = 'Glass.Message/bin/Release'
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
@@ -164,17 +248,48 @@ jobs:
             Compress-Archive -Path $files.FullName -DestinationPath $zip -Force
             Write-Host "Created $zip"
           }
-          Write-Host "`nArtifacts so far:"
+          Write-Host "`nPackage artifacts:"
           Get-ChildItem artifacts | Format-Table Name, Length
 
-      # Publish the demo gallery as a self-contained Windows app for BOTH
-      # architectures, so anyone can download the matching zip, unzip, and run
-      # Glass.Demo.exe WITHOUT installing .NET. (The library DLLs are AnyCPU and
-      # already run on x86 and x64 — only the bundled runtime is per-arch.)
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+            artifacts/Glass.Message-*.zip
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  #  demo — publish the gallery as a self-contained Windows app for BOTH
+  #  architectures, so anyone can download the matching zip, unzip, and run
+  #  Glass.Demo.exe WITHOUT installing .NET. (The library DLLs are AnyCPU and
+  #  already run on x86 and x64 — only the bundled runtime is per-arch.)
+  #  Runs in parallel with the package job.
+  # ---------------------------------------------------------------------------
+  demo:
+    runs-on: windows-latest
+    needs: [metadata, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDKs (8 / 9 / 10)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore demo
+        run: dotnet restore Glass.Demo/Glass.Demo.csproj
+
       - name: Publish demo app (self-contained, x64 + x86)
         shell: pwsh
         run: |
-          $ver  = '${{ steps.ver.outputs.version }}'
+          $ver  = '${{ needs.metadata.outputs.version }}'
           $rids = 'win-x64','win-x86'
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           foreach ($rid in $rids) {
@@ -192,26 +307,51 @@ jobs:
             Write-Host "Created artifacts/Glass.Demo-$ver-$rid.zip"
           }
 
-      # Always keep the artifacts on the workflow run itself (handy for manual runs).
-      - name: Upload workflow artifacts
+      - name: Upload demo artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: glass-message-${{ steps.ver.outputs.version }}
-          path: artifacts/*
+          name: demo-app
+          path: artifacts/Glass.Demo-*.zip
           if-no-files-found: error
 
-      # Publish the GitHub Release and attach every artifact so anyone visiting
-      # the repo can download them from the Releases page.
-      #   * On a tag push, this CREATES the Release for the tag automatically.
-      #   * On a UI release, it adds the assets to the existing Release.
+  # ---------------------------------------------------------------------------
+  #  release — gather every artifact and publish the GitHub Release. Skipped on
+  #  manual (workflow_dispatch) runs, which only build the artifacts.
+  #    * On a tag push, this CREATES the Release for the tag automatically.
+  #    * On a UI release, it adds the assets to the existing Release.
+  # ---------------------------------------------------------------------------
+  release:
+    runs-on: ubuntu-latest
+    needs: [metadata, package, demo]
+    if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: artifacts
+
+      - name: Download demo artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: demo-app
+          path: artifacts
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+
+      - name: List artifacts
+        run: ls -lh artifacts
+
       # The curated CHANGELOG section becomes the body; generate_release_notes
       # then appends an auto "Full Changelog" compare link beneath it.
       - name: Publish Release & attach assets
-        if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.ver.outputs.version }}
-          name: Glass.Message v${{ steps.ver.outputs.version }}
+          tag_name: v${{ needs.metadata.outputs.version }}
+          name: Glass.Message v${{ needs.metadata.outputs.version }}
           body_path: release-notes.md
           generate_release_notes: true
           fail_on_unmatched_files: true
@@ -220,13 +360,30 @@ jobs:
             artifacts/*.snupkg
             artifacts/*.zip
 
-      # Publish the package to NuGet.org. Runs only for a real release (tag push or
-      # a published GitHub Release) and only when the NUGET_API_KEY secret exists,
-      # so forks and manual test runs never publish. The matching .snupkg in the
-      # same folder is uploaded automatically. --skip-duplicate makes re-runs safe
-      # (re-tagging or re-running won't fail if the version is already on NuGet).
+  # ---------------------------------------------------------------------------
+  #  publish-nuget — push the package to NuGet.org. Runs only after a successful
+  #  Release, and only when the NUGET_API_KEY secret exists, so forks and manual
+  #  test runs never publish. The matching .snupkg is uploaded automatically.
+  # ---------------------------------------------------------------------------
+  publish-nuget:
+    runs-on: ubuntu-latest
+    needs: [metadata, release]
+    if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
+    steps:
+      - name: Setup .NET SDK (8)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: artifacts
+
+      # --skip-duplicate makes re-runs safe (re-tagging or re-running won't fail
+      # if the version is already on NuGet).
       - name: Push to NuGet.org
-        if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

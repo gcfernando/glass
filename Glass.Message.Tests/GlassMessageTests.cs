@@ -393,6 +393,45 @@ public class ToastOptionsTests
 }
 
 /// <summary>
+/// Covers the <see cref="OsVersion"/> helper, which resolves the true Windows
+/// version via RtlGetVersion so modern DWM chrome isn't disabled by a missing
+/// host-app compatibility manifest.
+/// </summary>
+public class OsVersionTests
+{
+    [Fact]
+    public void Major_Is_Reported() =>
+        Assert.True(OsVersion.Major > 0);
+
+    [Fact]
+    public void Build_Is_NonNegative() =>
+        Assert.True(OsVersion.Build >= 0);
+
+    // On a real Windows host RtlGetVersion must report at least Windows 10 (10.x),
+    // even when the test runner itself ships without a Windows 10/11 manifest —
+    // the exact scenario the helper exists to defend against.
+    [Fact]
+    public void Reports_At_Least_Windows10_On_Windows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        Assert.True(OsVersion.Major >= 10);
+    }
+
+    [Fact]
+    public void Windows11_Implies_Windows10_1803()
+    {
+        if (OsVersion.IsWindows11OrGreater)
+        {
+            Assert.True(OsVersion.IsWindows10_1803OrGreater);
+        }
+    }
+}
+
+/// <summary>
 /// Tests the <see cref="GlassDialog.RoundRect"/> geometry helper — the one piece
 /// of drawing code that can be checked without a live window.
 /// </summary>

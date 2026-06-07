@@ -212,8 +212,7 @@ internal sealed class GlassDialog : Form
     /// </summary>
     internal static bool EnableModernCorners(IntPtr handle)
     {
-        var v = Environment.OSVersion.Version;
-        if (!(v.Major == 10 && v.Build >= 22000))
+        if (!OsVersion.IsWindows11OrGreater)
         {
             return false;
         }
@@ -796,9 +795,13 @@ internal sealed class GlassDialog : Form
         for (var i = 0; i < defs.Length; i++)
         {
             var (label, result) = defs[i];
-            if (_cfg.CustomLabels != null && i < _cfg.CustomLabels.Length)
+            // Custom labels are supplied in logical order (button 1, 2, 3…), but in
+            // RTL the visual order is reversed — so index the labels by the logical
+            // position, not the visual one, or each caption lands on the wrong result.
+            var logicalIdx = _cfg.RightToLeft ? defs.Length - 1 - i : i;
+            if (_cfg.CustomLabels != null && logicalIdx < _cfg.CustomLabels.Length)
             {
-                label = _cfg.CustomLabels[i];
+                label = _cfg.CustomLabels[logicalIdx];
             }
 
             var btn = new GlassButton(_theme, _effectiveButtonRadius)
@@ -1286,7 +1289,7 @@ internal sealed class GlassDialog : Form
     // early builds. When applied, opacity is capped so the backdrop shows through.
     private bool TryApplyMica()
     {
-        if (Environment.OSVersion.Version is var v && !(v.Major == 10 && v.Build >= 22000))
+        if (!OsVersion.IsWindows11OrGreater)
         {
             return false;
         }
@@ -1308,8 +1311,7 @@ internal sealed class GlassDialog : Form
     // SetWindowCompositionAttribute API, tinting it with the theme background.
     private void TryApplyAcrylic()
     {
-        var v = Environment.OSVersion.Version;
-        if (!(v.Major == 10 && v.Build >= 17134))
+        if (!OsVersion.IsWindows10_1803OrGreater)
         {
             return;
         }

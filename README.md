@@ -1094,7 +1094,7 @@ GlassMessage.DefaultTheme = brand;   // apply everywhere
 
 > **Tip:** Built-in presets are shared singletons (exempt from disposal). Custom themes implement `IDisposable` and free their fonts on `Dispose()`.
 
-**Modern chrome:** with rounded corners enabled, the dialog requests crisp Windows 11 DWM corners and a **Mica** backdrop (falling back to **Acrylic** blur on Windows 10), degrading to a software-rounded region on older systems.
+**Modern chrome:** with rounded corners enabled, the dialog requests crisp Windows 11 DWM corners and a **Mica** backdrop (falling back to **Acrylic** blur on Windows 10), degrading to a software-rounded region on older systems. The OS version is detected with `RtlGetVersion`, so the modern chrome still activates even when the **host app ships without a Windows 10/11 compatibility manifest** (in which case `Environment.OSVersion` would otherwise mis-report Windows 8 and quietly disable it).
 
 ---
 
@@ -1127,6 +1127,7 @@ Glass/
 │   ├── GlassTheme.cs             # Palette + presets + AutoDetect
 │   ├── GlassToast.cs             # Toast facade, options, and toast window
 │   ├── GlassButton.cs            # Themed button control
+│   ├── OsVersion.cs              # True Windows version (RtlGetVersion) for DWM chrome
 │   ├── GlassAnimation.cs         # enum: Fade / SlideDown / Scale / None
 │   └── GlassInputMode.cs         # enum: None / Text / Password / Multiline / Dropdown
 ├── Glass.Demo/                   # ── WinForms feature gallery ──
@@ -1214,6 +1215,28 @@ dotnet build Glass.sln -c Release   # build everything
 5. Open a PR describing the change, with a screenshot for any UI work.
 
 > The demo's `demos` array is the single list to edit when adding or removing a feature showcase — keep it in sync with the library.
+
+---
+
+## 🚢 Release pipeline
+
+Releases are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml), triggered by pushing a version tag (`git push origin v1.2.3`), publishing a GitHub Release, or a manual run. The pipeline is split into focused jobs so independent work runs in parallel and a failure points straight at the stage that broke:
+
+```
+metadata ─► test ─┬─► package ─┐
+                  └─► demo ────┴─► release ─► publish-nuget
+```
+
+| Job | Runner | What it does |
+|---|---|---|
+| **metadata** | Linux | Resolves the version and extracts the matching `CHANGELOG.md` section once, sharing them via a job output + an artifact. |
+| **test** | Windows | Builds the library (all four TFMs) and runs the unit tests — the quality gate for everything downstream. |
+| **package** | Windows | Packs the `.nupkg` / `.snupkg` (CHANGELOG notes embedded) and zips the per-framework DLLs. |
+| **demo** | Windows | Publishes the self-contained demo app for `win-x64` and `win-x86`. Runs in parallel with **package**. |
+| **release** | Linux | Gathers every artifact and publishes the GitHub Release. Skipped on manual runs. |
+| **publish-nuget** | Linux | Pushes the package to NuGet.org (only when the `NUGET_API_KEY` secret is present). |
+
+Windows-only jobs build the library because it targets .NET Framework 4.8.1 and Windows Forms; the lightweight metadata/release/publish jobs run on Linux.
 
 ---
 
