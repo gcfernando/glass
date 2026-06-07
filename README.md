@@ -8,8 +8,8 @@ Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder �
 
 <br/>
 
-[![Latest release](https://img.shields.io/github/v/release/gcfernando/glass?sort=semver&display_name=tag&label=latest&color=0078D6)](https://github.com/gcfernando/glass/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/gcfernando/glass/total?color=3da639&label=downloads)](https://github.com/gcfernando/glass/releases)
+[![Latest release](https://img.shields.io/github/v/release/gcfernando/glass?sort=semver&display_name=tag&label=latest&color=0078D6&cacheSeconds=3600)](https://github.com/gcfernando/glass/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/gcfernando/glass/total?color=3da639&label=downloads&cacheSeconds=3600)](https://github.com/gcfernando/glass/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-4.8.1%20|%208%20|%209%20|%2010-512BD4?logo=dotnet&logoColor=white)
 ![UI](https://img.shields.io/badge/UI-WinForms-5C2D91)
