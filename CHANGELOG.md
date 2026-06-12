@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.2] - 2026-06-12
 
+### Added
+
+- **`showCapsLockHint` parameter on `InputPassword()`** — opt out of the Caps Lock
+  badge per dialog with `.InputPassword("placeholder", showCapsLockHint: false)`.
+  The hint stays on by default; suppress it for PIN entry, kiosk flows, or anywhere
+  uppercase input is intentional. Showcased by the new **Password — Caps Lock Hint
+  Off** demo (`Demo_PasswordNoCapsLock`).
+
 ### Fixed
 
 #### Thread safety & concurrency

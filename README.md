@@ -442,9 +442,12 @@ if (r.CheckBoxChecked) { /* persist the preference */ }
 
 <table>
 <tr>
-<td align="center"><img src="Images/Inline%20Text%20Input.png" width="360" alt="Text"/></td>
-<td align="center"><img src="Images/Password%20Input.png" width="360" alt="Password"/></td>
-<td align="center"><img src="Images/Drop-down%20Input.png" width="360" alt="Dropdown"/></td>
+<td align="center"><b>Text</b><br/><img src="Images/Inline%20Text%20Input.png" width="350" alt="Text"/></td>
+<td align="center"><b>Password (Caps Lock hint on)</b><br/><img src="Images/Password%20Input.png" width="350" alt="Password"/></td>
+</tr>
+<tr>
+<td align="center"><b>Password (Caps Lock hint off)</b><br/><img src="Images/Password%20-%20Caps%20Lock%20Hint%20Off.png" width="350" alt="Password without Caps Lock hint"/></td>
+<td align="center"><b>Drop-down</b><br/><img src="Images/Drop-down%20Input.png" width="350" alt="Dropdown"/></td>
 </tr>
 </table>
 
@@ -893,7 +896,7 @@ GlassMessage.PlaySystemSounds = true;
 - **Each `Demo_*` method** is self-contained and demonstrates exactly one capability with realistic copy.
 
 <details>
-<summary><b>Full demo → feature map (29 demos)</b></summary>
+<summary><b>Full demo → feature map (30 demos)</b></summary>
 
 <br/>
 
@@ -907,6 +910,7 @@ GlassMessage.PlaySystemSounds = true;
 | "Don't Show Again" Checkbox | `Demo_CheckBox` | `CheckBox(...)` + `ShowEx()` |
 | Inline Text Input | `Demo_Input` | `InputText(...)` |
 | Password Input | `Demo_Password` | `InputPassword(...)` |
+| Password — Caps Lock Hint Off | `Demo_PasswordNoCapsLock` | `InputPassword(..., showCapsLockHint: false)` |
 | Drop-down Input | `Demo_Dropdown` | `InputDropdown(...)` |
 | Expandable Detail Section | `Demo_Detail` | `Detail(...)` |
 | Determinate Progress Bar | `Demo_Progress` | `Progress(value, max)` |
