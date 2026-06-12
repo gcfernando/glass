@@ -85,13 +85,13 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Resolve the version (strip a leading "v") from whichever trigger fired:
       #   push tag     -> github.ref_name        (e.g. v1.2.3)
       #   release      -> release.tag_name
       #   manual run   -> the version input
-      - name: Determine version
+      - name: DetermineVersion
         id: ver
         shell: pwsh
         run: |
@@ -108,7 +108,7 @@ jobs:
       # Pull the CHANGELOG section for THIS version once, so it can be embedded
       # BOTH in the NuGet package (as release notes) and in the GitHub Release
       # body. Always runs; falls back to a short note if the section is missing.
-      - name: Extract release notes from CHANGELOG
+      - name: ExtractReleaseNotesFromChangelog
         shell: pwsh
         run: |
           $ver  = '${{ steps.ver.outputs.version }}'
@@ -132,8 +132,8 @@ jobs:
           Set-Content -Path release-notes.md -Value $notes -Encoding utf8
           Write-Host "----- release notes for v$ver -----`n$notes"
 
-      - name: Upload release notes
-        uses: actions/upload-artifact@v4
+      - name: UploadReleaseNotes
+        uses: actions/upload-artifact@v7
         with:
           name: release-notes
           path: release-notes.md
@@ -148,12 +148,12 @@ jobs:
     needs: metadata
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Install the modern .NET SDKs. .NET Framework 4.8.1's targeting pack is
       # already present on the windows-latest image.
-      - name: Setup .NET SDKs (8 / 9 / 10)
-        uses: actions/setup-dotnet@v4
+      - name: SetupDotnetSdks
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             8.0.x
@@ -164,7 +164,7 @@ jobs:
         run: dotnet restore Glass.sln
 
       # Build only the library (all four TFMs at once via its <TargetFrameworks>).
-      - name: Build library
+      - name: BuildLibrary
         run: >
           dotnet build Glass.Message/Glass.Message.csproj
           --configuration Release
@@ -188,10 +188,10 @@ jobs:
     needs: [metadata, test]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Setup .NET SDKs (8 / 9 / 10)
-        uses: actions/setup-dotnet@v4
+      - name: SetupDotnetSdks
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             8.0.x
@@ -201,7 +201,7 @@ jobs:
       - name: Restore
         run: dotnet restore Glass.Message/Glass.Message.csproj
 
-      - name: Build library
+      - name: BuildLibrary
         run: >
           dotnet build Glass.Message/Glass.Message.csproj
           --configuration Release
@@ -210,15 +210,15 @@ jobs:
           -p:ContinuousIntegrationBuild=true
 
       # Bring back the CHANGELOG notes so they can be embedded in the package.
-      - name: Download release notes
-        uses: actions/download-artifact@v4
+      - name: DownloadReleaseNotes
+        uses: actions/download-artifact@v8
         with:
           name: release-notes
 
       # Produce the NuGet package (+ symbols). One .nupkg holds every TFM, and the
       # CHANGELOG section is embedded as the package's release notes — MSBuild reads
       # the PackageReleaseNotes environment variable as the matching property.
-      - name: Pack NuGet package
+      - name: PackNugetPackage
         shell: pwsh
         run: |
           $env:PackageReleaseNotes = Get-Content release-notes.md -Raw
@@ -231,7 +231,7 @@ jobs:
 
       # Zip the built DLL + XML docs for each target framework individually, so
       # the Release page offers a direct per-framework download.
-      - name: Package per-target-framework DLLs
+      - name: PackagePerTargetFrameworkDlls
         shell: pwsh
         run: |
           $ver  = '${{ needs.metadata.outputs.version }}'
@@ -251,8 +251,8 @@ jobs:
           Write-Host "`nPackage artifacts:"
           Get-ChildItem artifacts | Format-Table Name, Length
 
-      - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+      - name: UploadPackageArtifacts
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-package
           path: |
@@ -273,20 +273,20 @@ jobs:
     needs: [metadata, test]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Setup .NET SDKs (8 / 9 / 10)
-        uses: actions/setup-dotnet@v4
+      - name: SetupDotnetSdks
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             8.0.x
             9.0.x
             10.0.x
 
-      - name: Restore demo
+      - name: RestoreDemo
         run: dotnet restore Glass.Demo/Glass.Demo.csproj
 
-      - name: Publish demo app (self-contained, x64 + x86)
+      - name: PublishDemoApp
         shell: pwsh
         run: |
           $ver  = '${{ needs.metadata.outputs.version }}'
@@ -307,8 +307,8 @@ jobs:
             Write-Host "Created artifacts/Glass.Demo-$ver-$rid.zip"
           }
 
-      - name: Upload demo artifacts
-        uses: actions/upload-artifact@v4
+      - name: UploadDemoArtifacts
+        uses: actions/upload-artifact@v7
         with:
           name: demo-app
           path: artifacts/Glass.Demo-*.zip
@@ -325,29 +325,29 @@ jobs:
     needs: [metadata, package, demo]
     if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
     steps:
-      - name: Download package artifacts
-        uses: actions/download-artifact@v4
+      - name: DownloadPackageArtifacts
+        uses: actions/download-artifact@v8
         with:
           name: nuget-package
           path: artifacts
 
-      - name: Download demo artifacts
-        uses: actions/download-artifact@v4
+      - name: DownloadDemoArtifacts
+        uses: actions/download-artifact@v8
         with:
           name: demo-app
           path: artifacts
 
-      - name: Download release notes
-        uses: actions/download-artifact@v4
+      - name: DownloadReleaseNotes
+        uses: actions/download-artifact@v8
         with:
           name: release-notes
 
-      - name: List artifacts
+      - name: ListArtifacts
         run: ls -lh artifacts
 
       # The curated CHANGELOG section becomes the body; generate_release_notes
       # then appends an auto "Full Changelog" compare link beneath it.
-      - name: Publish Release & attach assets
+      - name: PublishReleaseAndAttachAssets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.metadata.outputs.version }}
@@ -370,20 +370,20 @@ jobs:
     needs: [metadata, release]
     if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
     steps:
-      - name: Setup .NET SDK (8)
-        uses: actions/setup-dotnet@v4
+      - name: SetupDotnetSdk
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
-      - name: Download package artifacts
-        uses: actions/download-artifact@v4
+      - name: DownloadPackageArtifacts
+        uses: actions/download-artifact@v8
         with:
           name: nuget-package
           path: artifacts
 
       # --skip-duplicate makes re-runs safe (re-tagging or re-running won't fail
       # if the version is already on NuGet).
-      - name: Push to NuGet.org
+      - name: PushToNugetOrg
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
