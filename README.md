@@ -8,7 +8,7 @@ Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder �
 
 <br/>
 
-[![Latest version](https://img.shields.io/nuget/v/Glass.Message?label=latest&color=0078D6&logo=nuget&logoColor=white&cacheSeconds=3600)](https://www.nuget.org/packages/Glass.Message)
+[![Latest version](https://img.shields.io/nuget/v/Glass.Message?label=latest&color=0078D6&logo=nuget&logoColor=white&cacheSeconds=300)](https://www.nuget.org/packages/Glass.Message)
 [![Downloads](https://img.shields.io/github/downloads/gcfernando/glass/total?color=3da639&label=downloads&cacheSeconds=3600)](https://github.com/gcfernando/glass/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-4.8.1%20|%208%20|%209%20|%2010-512BD4?logo=dotnet&logoColor=white)
