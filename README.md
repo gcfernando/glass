@@ -94,6 +94,22 @@ GlassMessage.Show(
 
 ---
 
+## 🆕 What's new in v1.0.2
+
+| Area | Change |
+|---|---|
+| **Multi-monitor** | Dialogs now centre on the screen containing the mouse cursor, not always the primary monitor |
+| **Password input** | New `showCapsLockHint` parameter on `InputPassword()` — suppress the Caps Lock badge per dialog |
+| **Theming** | `GlassTheme.Dark` is now a proper named property (previously only `GlassTheme.Default` existed) |
+| **Detail panel** | Detail `TextBox` now respects the active theme colours — fixed on Light and High Contrast themes |
+| **Countdown** | Countdown timer uses a `Stopwatch` wall-clock — no more drift under CPU load |
+| **Drag** | Drag state resets when the dialog loses focus — prevents "stuck" window after Alt+Tab |
+| **Password rebuild** | Reveal-eye state is preserved after a DPI-change layout rebuild |
+
+See the full [CHANGELOG](CHANGELOG.md) for all 13 fixes.
+
+---
+
 ## 🖼️ Preview Gallery
 
 <table>
@@ -148,7 +164,7 @@ GlassMessage.Show(
 GlassMessage.Create("Mica backdrop applied.")
     .Title("Mica Backdrop Active")
     .Icon(MessageBoxIcon.Information)
-    .Theme(GlassTheme.Mica)   // Dark · Light · Mica · HighContrast · WindowsClassic
+    .Theme(GlassTheme.Mica)   // GlassTheme.Dark (= Default) · Light · Mica · HighContrast · WindowsClassic
     .Show();
 ```
 
@@ -187,7 +203,7 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 | **Theming** | `Dark`, `Light`, `Mica`, `HighContrast`, `WindowsClassic` + custom themes |
 | **Auto theme** | `GlassTheme.AutoDetect()` follows the Windows light/dark/HC setting |
 | **Modern chrome** | Windows 11 rounded corners (DWM), Mica backdrop, Acrylic fallback |
-| **Inputs** | Single-line, password (reveal + Caps Lock), multi-line, drop-down |
+| **Inputs** | Single-line, password (reveal + configurable Caps Lock hint), multi-line, drop-down |
 | **Checkbox** | "Don't show again"-style opt-in under the message |
 | **Detail panel** | Expandable "Show details" for stack traces / diagnostics |
 | **Progress** | Determinate and indeterminate (marquee) bars |
@@ -291,7 +307,7 @@ DialogResult result = GlassMessage.Show(
 if (result == DialogResult.OK) { /* ... */ }
 ```
 
-**Expected behaviour:** a themed dialog fades in, centred on the primary work area, with a glossy OK button. **Enter**, **OK**, or **Esc** all return `DialogResult.OK` for a single-button dialog.
+**Expected behaviour:** a themed dialog fades in, centred on the screen containing the mouse cursor (multi-monitor aware), with a glossy OK button. **Enter**, **OK**, or **Esc** all return `DialogResult.OK` for a single-button dialog.
 
 ---
 
@@ -442,11 +458,18 @@ var r = GlassMessage.Create("Enter a new name for the selected folder.")
     .ShowEx();
 if (r.Button == DialogResult.OK && !string.IsNullOrWhiteSpace(r.InputText)) { /* r.InputText */ }
 
-// Masked password — reveal eye + Caps Lock warning are automatic
+// Masked password — reveal eye + Caps Lock badge are shown by default
 GlassMessage.Create("Authentication is required to connect to Contoso ERP.")
     .Title("Sign In — Contoso ERP")
     .InputPassword("Active Directory password")
     .Buttons("Connect", "Cancel")
+    .ShowEx();
+
+// Suppress the Caps Lock badge (e.g. kiosk / PIN entry where it's not helpful)
+GlassMessage.Create("Enter your PIN to unlock the device.")
+    .Title("Device Locked")
+    .InputPassword("PIN", showCapsLockHint: false)
+    .Buttons("Unlock", "Cancel")
     .ShowEx();
 
 // Drop-down picker
@@ -461,9 +484,9 @@ GlassMessage.Create("Choose the output format.")
     .ShowEx();
 ```
 
-**Methods:** `InputText(placeholder, defaultValue)` · `InputPassword(placeholder)` · `InputMultiline(placeholder, defaultValue)` · `InputDropdown(items, defaultItem)`.
+**Methods:** `InputText(placeholder, defaultValue)` · `InputPassword(placeholder, showCapsLockHint = true)` · `InputMultiline(placeholder, defaultValue)` · `InputDropdown(items, defaultItem)`.
 **Read back:** `GlassResult.InputText` (never `null`).
-**Best practice:** treat password `InputText` as a secret — don't log it.
+**Best practice:** treat password `InputText` as a secret — don't log it. Set `showCapsLockHint: false` to hide the Caps Lock badge (e.g. for PIN or kiosk flows).
 
 </details>
 
@@ -961,7 +984,7 @@ static bool       PlaySystemSounds  { get; set; }  // = false
 | `AutoClose(int ms)` | Auto-confirm the default button after a delay |
 | `CheckBox(string label, bool defaultChecked = false)` | Add a checkbox |
 | `InputText(string placeholder = "", string defaultValue = "")` | Single-line input |
-| `InputPassword(string placeholder = "")` | Masked input + reveal + Caps Lock hint |
+| `InputPassword(string placeholder = "", bool showCapsLockHint = true)` | Masked input + reveal toggle; Caps Lock badge shown while active (pass `false` to suppress) |
 | `InputMultiline(string placeholder = "", string defaultValue = "")` | Multi-line input |
 | `InputDropdown(IEnumerable<string> items, string defaultItem = null)` | Drop-down list |
 | `Detail(string)` | Expandable "Show details" panel |
@@ -1092,6 +1115,8 @@ GlassMessage.DefaultTheme = brand;   // apply everywhere
 | Fonts | `TitleFont`, `MessageFont`, `ButtonFont` |
 | Window | `Opacity` |
 
+> **Built-in presets:** `GlassTheme.Default` · `GlassTheme.Dark` (alias for `Default`) · `GlassTheme.Light` · `GlassTheme.Mica` · `GlassTheme.HighContrast` · `GlassTheme.WindowsClassic` · `GlassTheme.AutoDetect()`.
+>
 > **Tip:** Built-in presets are shared singletons (exempt from disposal). Custom themes implement `IDisposable` and free their fonts on `Dispose()`.
 
 **Modern chrome:** with rounded corners enabled, the dialog requests crisp Windows 11 DWM corners and a **Mica** backdrop (falling back to **Acrylic** blur on Windows 10), degrading to a software-rounded region on older systems. The OS version is detected with `RtlGetVersion`, so the modern chrome still activates even when the **host app ships without a Windows 10/11 compatibility manifest** (in which case `Environment.OSVersion` would otherwise mis-report Windows 8 and quietly disable it).
@@ -1197,6 +1222,11 @@ dotnet build Glass.sln -c Release   # build everything
 <details>
 <summary><b>How do I close an async dialog from code?</b></summary>
 <br/>Pass a <code>CancellationToken</code> to <code>ShowAsync</code>; cancelling it closes the dialog and yields <code>DialogResult.Cancel</code>.
+</details>
+
+<details>
+<summary><b>Can I hide the Caps Lock hint on password fields?</b></summary>
+<br/>Yes — pass <code>showCapsLockHint: false</code> to <code>InputPassword()</code>:<br/><code>.InputPassword("placeholder", showCapsLockHint: false)</code>
 </details>
 
 <details>

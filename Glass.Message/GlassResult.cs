@@ -40,5 +40,5 @@ public sealed class GlassResult
     /// Lets a <see cref="GlassResult"/> be used wherever a <see cref="DialogResult"/>
     /// is expected, keeping drop-in compatibility with the classic API.
     /// </summary>
-    public static implicit operator DialogResult(GlassResult r) => r.Button;
+    public static implicit operator DialogResult(GlassResult r) => r?.Button ?? DialogResult.None;
 }

@@ -14,6 +14,11 @@ using Xunit;
 
 namespace Glass.Message.Tests;
 
+// All test classes that write to GlassMessage static state are placed in this
+// collection so xUnit serialises them (no two classes mutate globals in parallel).
+[CollectionDefinition("GlassStaticState")]
+public sealed class GlassStaticStateCollection { }
+
 /// <summary>Verifies the built-in theme presets and the OS theme detection.</summary>
 public class ThemeTests
 {
@@ -119,6 +124,7 @@ public class GlassResultTests
 }
 
 /// <summary>Exercises the fluent builder: chaining, custom labels, and edge cases.</summary>
+[Collection("GlassStaticState")]
 public class GlassBuilderTests
 {
     [Fact]
@@ -304,6 +310,7 @@ public class GlassDialogConfigTests
 /// static state, so the mutating tests serialise on a lock and restore the
 /// original values in a finally block.
 /// </summary>
+[Collection("GlassStaticState")]
 public class GlassMessageStaticTests
 {
     private static readonly object _staticLock = new();
@@ -458,5 +465,108 @@ public class RoundRectTests
     {
         using var path = GlassDialog.RoundRect(new Rectangle(0, 0, 100, 50), -5);
         Assert.NotNull(path);
+    }
+}
+
+/// <summary>
+/// Covers the <see cref="GlassToast.CalcToastLocation"/> geometry helper — pure
+/// coordinate math, no window required.
+/// </summary>
+public class CalcToastLocationTests
+{
+    private static readonly Rectangle Screen1080p = new(0, 0, 1920, 1040); // typical working area
+
+    [Fact]
+    public void BottomRight_Is_Inside_Screen()
+    {
+        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomRight, 0, 12);
+        Assert.True(loc.X >= Screen1080p.Left);
+        Assert.True(loc.Y >= Screen1080p.Top);
+        Assert.True(loc.X + 360 <= Screen1080p.Right + 1);
+        Assert.True(loc.Y + 80 <= Screen1080p.Bottom + 1);
+    }
+
+    [Fact]
+    public void BottomLeft_X_Is_Near_Left_Edge()
+    {
+        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomLeft, 0, 12);
+        Assert.Equal(Screen1080p.Left + 12, loc.X);
+    }
+
+    [Fact]
+    public void TopRight_Y_Is_Near_Top_Edge()
+    {
+        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopRight, 0, 12);
+        Assert.Equal(Screen1080p.Top + 12, loc.Y);
+    }
+
+    [Fact]
+    public void TopLeft_Is_At_Top_Left_Corner()
+    {
+        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopLeft, 0, 12);
+        Assert.Equal(Screen1080p.Left + 12, loc.X);
+        Assert.Equal(Screen1080p.Top + 12, loc.Y);
+    }
+
+    [Fact]
+    public void BottomCenter_Is_Horizontally_Centred()
+    {
+        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomCenter, 0, 12);
+        var expectedX = Screen1080p.Left + ((Screen1080p.Width - 360) / 2);
+        Assert.Equal(expectedX, loc.X);
+    }
+
+    [Fact]
+    public void TopCenter_Is_Horizontally_Centred()
+    {
+        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopCenter, 0, 12);
+        var expectedX = Screen1080p.Left + ((Screen1080p.Width - 360) / 2);
+        Assert.Equal(expectedX, loc.X);
+    }
+
+    [Fact]
+    public void Stack_Offset_Shifts_BottomRight_Up()
+    {
+        var loc0 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomRight, 0, 12);
+        var loc1 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomRight, 92, 12);
+        Assert.True(loc1.Y < loc0.Y);
+        Assert.Equal(loc0.Y - 92, loc1.Y);
+    }
+
+    [Fact]
+    public void Stack_Offset_Shifts_TopLeft_Down()
+    {
+        var loc0 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopLeft, 0, 12);
+        var loc1 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopLeft, 92, 12);
+        Assert.True(loc1.Y > loc0.Y);
+        Assert.Equal(loc0.Y + 92, loc1.Y);
+    }
+}
+
+/// <summary>
+/// Verifies fixes to <see cref="GlassResult"/> and <see cref="GlassTheme"/>
+/// introduced in v1.0.2.
+/// </summary>
+public class V102RegressionTests
+{
+    [Fact]
+    public void GlassResult_Null_Implicit_Conversion_Returns_None()
+    {
+        GlassResult r = null;
+        DialogResult dr = r;
+        Assert.Equal(DialogResult.None, dr);
+    }
+
+    [Fact]
+    public void Dark_Theme_Is_Same_Instance_As_Default()
+    {
+        Assert.Same(GlassTheme.Default, GlassTheme.Dark);
+    }
+
+    [Fact]
+    public void InputDropdown_Null_Items_Does_Not_Throw()
+    {
+        var ex = Record.Exception(() => GlassMessage.Create("msg").InputDropdown(null));
+        Assert.Null(ex);
     }
 }

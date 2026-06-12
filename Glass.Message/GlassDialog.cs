@@ -78,9 +78,11 @@ internal sealed class GlassDialog : Form
     private readonly int _effectiveRadius;
     private readonly int _effectiveButtonRadius;
 
-    private Bitmap _iconBitmap;     // from the shared icon cache or the caller; not owned here
+    private Bitmap _iconBitmap;     // system icons are cloned per-dialog (owned); custom icons are not owned
+    private bool _ownsIconBitmap;  // true when _iconBitmap is a clone we must dispose
     private Point _dragOrigin;     // mouse offset captured when a title-bar drag begins
     private bool _dragging;
+    private bool _inputRevealed;  // password-reveal state preserved across Rebuild()
     private bool _isExpanded;     // whether the detail panel is currently open
 
     // Message-text rectangle worked out during measurement and reused at layout.
@@ -131,6 +133,7 @@ internal sealed class GlassDialog : Form
 
     // --- Auto-close countdown ------------------------------------------------
     private System.Windows.Forms.Timer _countTimer;
+    private System.Diagnostics.Stopwatch _countClock;  // wall-clock source for drift-free countdown
     private int _countRemaining;
 
     // --- Cached paint resources (rebuilt on resize/rebuild via InvalidateCache) -
@@ -146,6 +149,8 @@ internal sealed class GlassDialog : Form
     private readonly Pen _glowPen;
     private readonly Pen _edgePen;
     private readonly Pen _panelSepPen;
+    private readonly Pen _inputBorderPen;       // cached — used on every paint; avoids per-frame allocation
+    private readonly SolidBrush _inputFillBrush; // cached — fills the input band background on every paint
 
     // --- Win32 / DWM interop for backdrops and rounded corners ----------------
     // Used to request the (undocumented) Acrylic blur-behind on Windows 10.
@@ -179,6 +184,39 @@ internal sealed class GlassDialog : Form
 
     [DllImport("user32.dll")]
     private static extern bool MessageBeep(uint type);
+
+    // Used to read the effective DPI of the monitor under the cursor before the
+    // dialog's own handle exists (so the initial layout uses the correct scale
+    // rather than always defaulting to the primary monitor's DPI).
+    [DllImport("shcore.dll", SetLastError = false)]
+    private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(System.Drawing.Point pt, uint dwFlags);
+
+    // Returns the DPI scale for the monitor the cursor is currently on, falling
+    // back to the primary monitor via the desktop DC if the native call fails.
+    private static float GetScaleForCursorScreen()
+    {
+        try
+        {
+            var hMon = MonitorFromPoint(Cursor.Position, 2 /* MONITOR_DEFAULTTONEAREST */);
+            if (hMon != IntPtr.Zero
+                && GetDpiForMonitor(hMon, 0 /* MDT_EFFECTIVE_DPI */, out var dpiX, out _) == 0
+                && dpiX > 0)
+            {
+                return dpiX / 96f;
+            }
+        }
+        catch { }
+
+        try
+        {
+            using var g = Graphics.FromHwnd(IntPtr.Zero);
+            return g.DpiX / 96f;
+        }
+        catch { return 1.0f; }
+    }
 
     // Plays the Windows system sound matching the dialog's icon, mirroring what the
     // classic MessageBox does. Best-effort: a failed beep is never fatal.
@@ -242,17 +280,36 @@ internal sealed class GlassDialog : Form
         _ => null,
     };
 
+    // Returns a per-dialog (owned) bitmap and a flag indicating ownership.
+    // System icons are cloned so that concurrent DrawImage calls on different STA
+    // threads never share the same Bitmap instance (Bitmap is not thread-safe for
+    // concurrent use).  A caller-supplied CustomIcon is used as-is (not owned).
+    private static (Bitmap bitmap, bool owned) ResolveIcon(GlassDialogConfig cfg)
+    {
+        if (cfg.CustomIcon != null)
+        {
+            return (cfg.CustomIcon, false);
+        }
+
+        var src = GetCachedSystemIcon(cfg.Icon);
+        if (src == null)
+        {
+            return (null, false);
+        }
+
+        return (new Bitmap(src), true);
+    }
+
     public GlassDialog(GlassDialogConfig cfg)
     {
         _cfg = cfg;
         _theme = cfg.Theme ?? GlassTheme.Default;
         _targetOpacity = _theme.Opacity;
 
-        // Capture the desktop DPI up front; WM_DPICHANGED will refresh it later.
-        using (var g = Graphics.FromHwnd(IntPtr.Zero))
-        {
-            _scale = g.DpiX / 96f;
-        }
+        // Capture the DPI of the monitor the cursor is on — a better first guess than
+        // always reading the primary monitor.  WM_DPICHANGED will correct it if the
+        // dialog is ultimately shown on a different screen.
+        _scale = GetScaleForCursorScreen();
 
         var useRounded = cfg.UseRoundedCorners ?? GlassMessage.UseRoundedCorners;
         _effectiveRadius = useRounded ? _theme.CornerRadius : 0;
@@ -266,6 +323,8 @@ internal sealed class GlassDialog : Form
         _glowPen = new Pen(Color.FromArgb(55, _theme.BorderColor), 3f);  // outer border glow
         _edgePen = new Pen(Color.FromArgb(190, _theme.BorderColor), 1f);  // crisp border edge
         _panelSepPen = new Pen(Color.FromArgb(45, _theme.BorderColor), 1f);  // above the button strip
+        _inputBorderPen = new Pen(Color.FromArgb(70, _theme.BorderColor), 1f);  // input field border
+        _inputFillBrush = new SolidBrush(_theme.InputBackColor);
 
         Build();
     }
@@ -294,15 +353,18 @@ internal sealed class GlassDialog : Form
         AccessibleName = string.IsNullOrEmpty(_cfg.Title) ? "Dialog" : _cfg.Title;
         AccessibleRole = AccessibleRole.Alert;
 
-        _iconBitmap = _cfg.CustomIcon ?? GetCachedSystemIcon(_cfg.Icon);
+        (_iconBitmap, _ownsIconBitmap) = ResolveIcon(_cfg);
 
-        var (fw, fh) = MeasureForm();
+        // Use the cursor's current screen for width-cap measurement so the dialog
+        // doesn't overflow on a narrow secondary monitor.
+        var (fw, fh) = MeasureForm(Screen.FromPoint(Cursor.Position));
         ClientSize = new Size(fw, fh);
         _closeBtnBounds = ComputeCloseBtnBounds(fw);
         ApplyRegion(fw, fh);
         AddControls(fw, fh);
 
-        var wa = PrimaryWorkingArea;
+        // Centre on the monitor the cursor is on, not always the primary monitor.
+        var wa = Screen.FromPoint(Cursor.Position)?.WorkingArea ?? PrimaryWorkingArea;
         Location = new Point(wa.Left + ((wa.Width - fw) / 2), wa.Top + ((wa.Height - fh) / 2));
         ResumeLayout(false);
     }
@@ -316,6 +378,13 @@ internal sealed class GlassDialog : Form
     private void Rebuild(Screen recenterOn = null)
     {
         SuspendLayout();
+
+        // Stop any in-progress animation so its timer can't fire against the
+        // partially-torn-down form during the rebuild.
+        DisposeFadeTimer();
+        _scaleActive = false;
+        _slideActive = false;
+        _fadingOut = false;
 
         var savedInputText = _inputTextBox != null && !_inputTextBox.IsDisposed ? _inputTextBox.Text : null;
         var savedComboText = _inputCombo != null && !_inputCombo.IsDisposed ? _inputCombo.Text : null;
@@ -346,9 +415,17 @@ internal sealed class GlassDialog : Form
         _messageLabel = null;
         InvalidateCache();
 
-        _iconBitmap = _cfg.CustomIcon ?? GetCachedSystemIcon(_cfg.Icon);
+        // Dispose the old cloned icon (if owned) before replacing it.
+        if (_ownsIconBitmap)
+        {
+            _iconBitmap?.Dispose();
+            _iconBitmap = null;
+        }
 
-        var (fw, fh) = MeasureForm();
+        (_iconBitmap, _ownsIconBitmap) = ResolveIcon(_cfg);
+
+        // Use the screen the dialog is currently on for the width-cap measurement.
+        var (fw, fh) = MeasureForm(Screen.FromRectangle(Bounds));
         ClientSize = new Size(fw, fh);
         _closeBtnBounds = ComputeCloseBtnBounds(fw);
         ApplyRegion(fw, fh);
@@ -421,9 +498,12 @@ internal sealed class GlassDialog : Form
     // the message rectangle and per-button width used later during layout. Width
     // is the max of what the title, message, and button row each need (bounded),
     // and height is the sum of whichever sections are present.
-    private (int w, int h) MeasureForm()
+    private (int w, int h) MeasureForm(Screen targetScreen = null)
     {
-        var maxW = Math.Min((int)(PrimaryWorkingArea.Width * 0.80), Scale(720));
+        // Cap at 80% of the target screen (the one the dialog will appear on) so the
+        // dialog never overflows on a narrow secondary monitor.
+        var workArea = targetScreen?.WorkingArea ?? PrimaryWorkingArea;
+        var maxW = Math.Min((int)(workArea.Width * 0.80), Scale(720));
         var iconColW = _iconBitmap != null ? IconSize + Pad : 0;
         var textMaxW = maxW - (Pad * 2) - iconColW;
 
@@ -661,36 +741,46 @@ internal sealed class GlassDialog : Form
                     {
                         Bounds = new Rectangle(eyeX, y, eyeSize, inputH2),
                     };
-                    eye.RevealedChanged += (s, e) => _inputTextBox.PasswordChar = eye.Revealed ? '\0' : '●';
+                    // Restore the reveal state from before the last Rebuild (e.g. DPI change).
+                    if (_inputRevealed) { eye.Restore(true); }
+                    _inputTextBox.PasswordChar = _inputRevealed ? '\0' : '●';
+                    eye.RevealedChanged += (s, e) =>
+                    {
+                        _inputTextBox.PasswordChar = eye.Revealed ? '\0' : '●';
+                        _inputRevealed = eye.Revealed;
+                    };
                     Controls.Add(eye);
                     eye.BringToFront();
 
-                    _capsBadge = new CapsLockBadge(_theme, _scale)
+                    if (_cfg.InputShowCapsLockHint)
                     {
-                        Location = new Point(_inputBandRect.Left, _inputBandRect.Bottom + Scale(2)),
-                        Visible = false,
-                    };
-                    Controls.Add(_capsBadge);
-                    _capsBadge.BringToFront();
-                    // Show the Caps Lock warning only while the field is focused
-                    // and Caps Lock is actually on; keep it refreshed on key-up.
-                    void UpdateCaps()
-                    {
-                        if (_inputTextBox == null || _inputTextBox.IsDisposed || _capsBadge == null || _capsBadge.IsDisposed)
+                        _capsBadge = new CapsLockBadge(_theme, _scale)
                         {
-                            return;
-                        }
+                            Location = new Point(_inputBandRect.Left, _inputBandRect.Bottom + Scale(2)),
+                            Visible = false,
+                        };
+                        Controls.Add(_capsBadge);
+                        _capsBadge.BringToFront();
+                        // Show the Caps Lock warning only while the field is focused
+                        // and Caps Lock is actually on; keep it refreshed on key-up.
+                        void UpdateCaps()
+                        {
+                            if (_inputTextBox == null || _inputTextBox.IsDisposed || _capsBadge == null || _capsBadge.IsDisposed)
+                            {
+                                return;
+                            }
 
-                        var on = IsKeyLocked(Keys.CapsLock) && _inputTextBox.Focused;
-                        _capsBadge.Visible = on;
-                        if (on)
-                        {
-                            _capsBadge.BringToFront();
+                            var on = IsKeyLocked(Keys.CapsLock) && _inputTextBox.Focused;
+                            _capsBadge.Visible = on;
+                            if (on)
+                            {
+                                _capsBadge.BringToFront();
+                            }
                         }
+                        _inputTextBox.Enter += (s, e) => UpdateCaps();
+                        _inputTextBox.Leave += (s, e) => { if (_capsBadge != null && !_capsBadge.IsDisposed) { _capsBadge.Visible = false; } };
+                        _inputTextBox.KeyUp += (s, e) => UpdateCaps();
                     }
-                    _inputTextBox.Enter += (s, e) => UpdateCaps();
-                    _inputTextBox.Leave += (s, e) => { if (_capsBadge != null && !_capsBadge.IsDisposed) { _capsBadge.Visible = false; } };
-                    _inputTextBox.KeyUp += (s, e) => UpdateCaps();
                 }
                 y += inputH2;
             }
@@ -753,8 +843,8 @@ internal sealed class GlassDialog : Form
                 {
                     Text = _cfg.DetailText,
                     Font = _detailFont,
-                    BackColor = Color.FromArgb(8, 15, 28),
-                    ForeColor = Color.FromArgb(160, 175, 200),
+                    BackColor = _theme.InputBackColor,
+                    ForeColor = _theme.InputForeColor,
                     ReadOnly = true,
                     Multiline = true,
                     ScrollBars = ScrollBars.Vertical,
@@ -911,6 +1001,10 @@ internal sealed class GlassDialog : Form
             Location = new Point(
                 Location.X + e.X - _dragOrigin.X,
                 Location.Y + e.Y - _dragOrigin.Y);
+            // Clamp so the title bar (and therefore the drag handle) always
+            // remains reachable — prevents the dialog from being dragged
+            // completely off-screen and becoming unretrievable.
+            ClampToScreen(Screen.FromRectangle(Bounds));
         }
     }
 
@@ -926,6 +1020,12 @@ internal sealed class GlassDialog : Form
 
     protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); _dragging = false; }
 
+    // Stop dragging if the window loses activation (e.g. Alt+Tab or another window
+    // comes to the foreground while the user is holding the mouse button).  Without
+    // this, mouse-capture is silently released by Windows and _dragging stays true,
+    // causing the dialog to jump when the pointer moves over it next time.
+    protected override void OnDeactivate(EventArgs e) { base.OnDeactivate(e); _dragging = false; }
+
     // Expanding/collapsing the detail panel changes the dialog height, so the
     // simplest correct path is a full rebuild at the new size.
     private void OnDetailToggleClick(object sender, LinkLabelLinkClickedEventArgs e)
@@ -938,25 +1038,34 @@ internal sealed class GlassDialog : Form
     private void StartCountdown()
     {
         _countRemaining = _cfg.AutoCloseMs;
+        _countClock = System.Diagnostics.Stopwatch.StartNew();
         UpdateCountdownLabel();
-        _countTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+        // Poll every 200 ms so the arc is smooth and the close fires within 200 ms
+        // of the deadline — far more accurate than 1000 ms ticks.
+        _countTimer = new System.Windows.Forms.Timer { Interval = 200 };
         _countTimer.Tick += OnCountdownTick;
         _countTimer.Start();
     }
 
     private void OnCountdownTick(object sender, EventArgs e)
     {
-        _countRemaining -= 1000;
-        if (_countRemaining <= 0)
+        var remaining = Math.Max(0, _cfg.AutoCloseMs - (int)_countClock.ElapsedMilliseconds);
+        if (remaining <= 0)
         {
+            _countRemaining = 0;
             StopCountdown();
             BeginClose(DefaultResult(_cfg.Buttons, _cfg.DefaultButton));
+            return;
         }
-        else
+        var prevSec = _countRemaining / 1000;
+        _countRemaining = remaining;
+        // Only redraw the label when the displayed second actually changes — avoids
+        // a visible text-flicker on every 200 ms tick.
+        if (_countRemaining / 1000 != prevSec)
         {
             UpdateCountdownLabel();
-            InvalidateCountdownArc();
         }
+        InvalidateCountdownArc();
     }
 
     // Repaint just the circular countdown arc (plus the host button) each second,
@@ -989,6 +1098,7 @@ internal sealed class GlassDialog : Form
     private void StopCountdown()
     {
         _ = (_countdownBtn?.Text = _countdownBaseLabel);
+        _countClock?.Stop();
 
         if (_countTimer == null)
         {
@@ -1003,10 +1113,16 @@ internal sealed class GlassDialog : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        // With no animation, just snap to full opacity. Otherwise start hidden and
-        // arrange the entrance (the timer is started in OnShown).
+        // With no animation, snap to full opacity — but first re-centre on the
+        // owner's screen (or cursor screen) now that Owner is set by WinForms.
+        // Build() used the cursor screen as a best-guess before the owner was known;
+        // this corrects it for callers that pass ShowDialog(owner) on a secondary monitor.
         if (_cfg.Animation == GlassAnimation.None)
         {
+            var screen = Owner != null
+                ? Screen.FromHandle(Owner.Handle)
+                : Screen.FromPoint(Cursor.Position);
+            CenterOn(screen ?? Screen.PrimaryScreen);
             Opacity = _targetOpacity;
             return;
         }
@@ -1244,6 +1360,9 @@ internal sealed class GlassDialog : Form
             SetBounds(_scaleFinalLoc.X + ((_scaleFinalSize.Width - nsw) / 2),
                       _scaleFinalLoc.Y + ((_scaleFinalSize.Height - nsh) / 2), nsw, nsh);
             ResumeLayout(false);
+            // Keep the close-button hit region in sync with the animated width so
+            // the × can be clicked reliably throughout the Scale animation.
+            _closeBtnBounds = ComputeCloseBtnBounds(nsw);
         }
     }
 
@@ -1253,7 +1372,13 @@ internal sealed class GlassDialog : Form
     {
         if (m.Msg == _wmDpiChanged)
         {
-            _scale = (m.WParam.ToInt32() & 0xFFFF) / 96f;
+            // WPARAM encodes new Y-DPI in HIWORD and X-DPI in LOWORD.  Take the
+            // larger of the two so neither axis is ever under-scaled on rare
+            // non-square-DPI virtual displays.
+            var raw = m.WParam.ToInt32();
+            var dpiX = (ushort)(raw & 0xFFFF);
+            var dpiY = (ushort)((raw >> 16) & 0xFFFF);
+            _scale = Math.Max(dpiX, dpiY) / 96f;
 
             Screen target = null;
             if (m.LParam != IntPtr.Zero)
@@ -1450,19 +1575,18 @@ internal sealed class GlassDialog : Form
     // since the borderless text box / combo can't draw their own.
     private void PaintInputBorders(Graphics g)
     {
-        using var borderPen = new Pen(Color.FromArgb(70, _theme.BorderColor), 1f);
+        // Use the pre-allocated _inputBorderPen — same colour for the dialog's
+        // lifetime; avoids a GDI+ object allocation on every WM_PAINT.
+        var borderPen = _inputBorderPen;
 
         if (_inputTextBox != null && !_inputTextBox.IsDisposed)
         {
             var b = _inputBandRect;
-            using (var fill = new SolidBrush(_theme.InputBackColor))
+            if (_effectiveRadius > 0)
+            { using var fp = RoundRect(b, 4); g.FillPath(_inputFillBrush, fp); }
+            else
             {
-                if (_effectiveRadius > 0)
-                { using var fp = RoundRect(b, 4); g.FillPath(fill, fp); }
-                else
-                {
-                    g.FillRectangle(fill, b);
-                }
+                g.FillRectangle(_inputFillBrush, b);
             }
             if (_effectiveRadius > 0)
             { using var p = RoundRect(b, 4); g.DrawPath(borderPen, p); }
@@ -1590,19 +1714,25 @@ internal sealed class GlassDialog : Form
         private readonly System.Windows.Forms.Timer _ticker;
         private GraphicsPath _trackPath;
         private Size _trackSize;
+        private SolidBrush _trackBgBrush;  // cached — same colour for the control's lifetime
 
         public GlassProgressPanel(GlassTheme theme, int value, int max)
         {
             _theme = theme;
             _value = value;
             _max = Math.Max(1, max);
+            _trackBgBrush = new SolidBrush(Color.FromArgb(30, theme.AccentColor));
             SetStyle(ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.UserPaint, true);
             if (_value == -1)
             {
-                _ticker = new System.Windows.Forms.Timer { Interval = 16 };
-                _ticker.Tick += (s, e) => { _phase = (_phase + 0.045f) % (float)(Math.PI * 2.0); Invalidate(); };
+                // 33 ms ≈ 30 fps is imperceptibly identical to 60 fps for a slow
+                // sine-wave marquee and halves the timer pressure on the message pump.
+                // Phase step scaled proportionally (0.045 × 33/16 ≈ 0.093) so the
+                // animation speed is unchanged.
+                _ticker = new System.Windows.Forms.Timer { Interval = 33 };
+                _ticker.Tick += (s, e) => { _phase = (_phase + 0.093f) % (float)(Math.PI * 2.0); Invalidate(); };
                 _ticker.Start();
             }
         }
@@ -1642,10 +1772,7 @@ internal sealed class GlassDialog : Form
                 _trackPath = RoundRect(rect, r);
             }
 
-            using (var bgBrush = new SolidBrush(Color.FromArgb(30, _theme.AccentColor)))
-            {
-                g.FillPath(bgBrush, _trackPath);
-            }
+            g.FillPath(_trackBgBrush, _trackPath);
 
             if (_value == -1)
             {
@@ -1698,7 +1825,7 @@ internal sealed class GlassDialog : Form
         protected override void Dispose(bool disposing)
         {
             if (disposing)
-            { _ticker?.Stop(); _ticker?.Dispose(); _trackPath?.Dispose(); }
+            { _ticker?.Stop(); _ticker?.Dispose(); _trackPath?.Dispose(); _trackBgBrush?.Dispose(); }
             base.Dispose(disposing);
         }
     }
@@ -1813,6 +1940,7 @@ internal sealed class GlassDialog : Form
     {
         private readonly GlassTheme _theme;
         private readonly float _scale;
+        private readonly SolidBrush _bgBrush;   // cached — same colour for the control's lifetime
         private bool _hover;
 
         public event EventHandler RevealedChanged;
@@ -1822,6 +1950,7 @@ internal sealed class GlassDialog : Form
         {
             _theme = theme;
             _scale = scale;
+            _bgBrush = new SolidBrush(theme.InputBackColor);
             BackColor = theme.InputBackColor;
             Cursor = Cursors.Hand;
             TabStop = false;
@@ -1836,6 +1965,14 @@ internal sealed class GlassDialog : Form
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
 
+        // Called by GlassDialog.AddControls to restore state after a Rebuild.
+        internal void Restore(bool revealed)
+        {
+            Revealed = revealed;
+            AccessibleName = revealed ? "Hide password" : "Show password";
+            // No Invalidate() here — called before the form is shown.
+        }
+
         protected override void OnClick(EventArgs e)
         {
             Revealed = !Revealed;
@@ -1849,10 +1986,7 @@ internal sealed class GlassDialog : Form
         {
             var g = e.Graphics;
             SetQuality(g);
-            using (var bg = new SolidBrush(_theme.InputBackColor))
-            {
-                g.FillRectangle(bg, ClientRectangle);
-            }
+            g.FillRectangle(_bgBrush, ClientRectangle);
 
             var d = (int)Math.Round(Math.Min(Width, Height) * 0.72f);
             var hi = new Rectangle((Width - d) / 2, (Height - d) / 2, d, d);
@@ -1897,6 +2031,12 @@ internal sealed class GlassDialog : Form
                 g.DrawLine(pen, cx - (ew * 1.05f), cy + (eh * 1.7f), cx + (ew * 1.05f), cy - (eh * 1.7f));
             }
         }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _bgBrush?.Dispose();
+            base.Dispose(disposing);
+        }
     }
 
     // Small warning pill shown beneath a password field when Caps Lock is on:
@@ -1906,6 +2046,7 @@ internal sealed class GlassDialog : Form
         private readonly GlassTheme _theme;
         private readonly float _scale;
         private readonly Font _font;
+        private readonly Font _exFont;   // cached — same size/family for the badge's lifetime
         private const string _text = "Caps Lock is on";
         private readonly int _pad, _icon, _gap, _radius;
 
@@ -1918,6 +2059,7 @@ internal sealed class GlassDialog : Form
             _icon = Sc(13);
             _gap = Sc(6);
             _radius = Sc(4);
+            _exFont = new Font(_font.FontFamily, _icon * 0.52f, FontStyle.Bold, GraphicsUnit.Pixel);
 
             AccessibleRole = AccessibleRole.Alert;
             AccessibleName = _text;
@@ -1973,18 +2115,21 @@ internal sealed class GlassDialog : Form
                 using var fill = new SolidBrush(_theme.AccentColor);
                 g.FillPath(fill, tri);
             }
-            using (var exFont = new Font(_font.FontFamily, _icon * 0.52f, FontStyle.Bold, GraphicsUnit.Pixel))
-            {
-                TextRenderer.DrawText(g, "!", exFont,
-                    new Rectangle(ix, iy + (_icon / 5), _icon, _icon),
-                    Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.NoPadding);
-            }
+            TextRenderer.DrawText(g, "!", _exFont,
+                new Rectangle(ix, iy + (_icon / 5), _icon, _icon),
+                Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.NoPadding);
 
             var textX = ix + _icon + _gap;
             TextRenderer.DrawText(g, _text, _font,
                 new Rectangle(textX, 0, w - textX - _pad, h),
                 _theme.MessageColor,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _exFont?.Dispose();
+            base.Dispose(disposing);
         }
     }
 
@@ -2000,7 +2145,9 @@ internal sealed class GlassDialog : Form
             base.OnHandleCreated(e);
             if (!string.IsNullOrEmpty(_placeholder))
             {
-                _ = SendMessage(Handle, 0x1501, 0, _placeholder);   // EM_SETCUEBANNER
+                // wParam = 1: keep the cue banner visible even while the field has
+                // focus, so the user can still read the hint before they start typing.
+                _ = SendMessage(Handle, 0x1501, 1u, _placeholder);   // EM_SETCUEBANNER
             }
         }
     }
@@ -2019,6 +2166,13 @@ internal sealed class GlassDialog : Form
             _glowPen?.Dispose();
             _edgePen?.Dispose();
             _panelSepPen?.Dispose();
+            _inputBorderPen?.Dispose();
+            _inputFillBrush?.Dispose();
+            // Only dispose the icon bitmap when we created the clone ourselves.
+            if (_ownsIconBitmap)
+            {
+                _iconBitmap?.Dispose();
+            }
         }
         base.Dispose(disposing);
     }

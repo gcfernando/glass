@@ -47,6 +47,7 @@ public sealed class GlassBuilder
     private string _inputPlaceholder;
     private string[] _inputDropdownItems;
     private string _inputDefault;
+    private bool _inputShowCapsLockHint = true;
 
     private string _detailText;
 
@@ -91,9 +92,9 @@ public sealed class GlassBuilder
     }
 
     /// <summary>
-    /// Supplies custom button captions. The number of labels picks the closest
-    /// standard layout (1 → OK, 2 → OK/Cancel, 3+ → Yes/No/Cancel) so the dialog
-    /// still maps each click onto a meaningful <see cref="DialogResult"/>.
+    /// Supplies custom button captions. At most three labels are rendered (mapped to
+    /// the Yes/No/Cancel positions). The count picks the layout: 1 → OK, 2 →
+    /// OK/Cancel, 3 → Yes/No/Cancel. Labels beyond the third are silently ignored.
     /// </summary>
     public GlassBuilder Buttons(params string[] labels)
     {
@@ -146,11 +147,17 @@ public sealed class GlassBuilder
         return this;
     }
 
-    /// <summary>Adds a masked password input (with reveal toggle and Caps Lock hint).</summary>
-    public GlassBuilder InputPassword(string placeholder = "")
+    /// <summary>
+    /// Adds a masked password input with a reveal-eye toggle. When
+    /// <paramref name="showCapsLockHint"/> is <c>true</c> (the default), a small
+    /// "Caps Lock is on" badge appears beneath the field while Caps Lock is active
+    /// and the field is focused. Set it to <c>false</c> to suppress the badge.
+    /// </summary>
+    public GlassBuilder InputPassword(string placeholder = "", bool showCapsLockHint = true)
     {
         _inputMode = GlassInputMode.Password;
         _inputPlaceholder = placeholder;
+        _inputShowCapsLockHint = showCapsLockHint;
         return this;
     }
 
@@ -167,7 +174,7 @@ public sealed class GlassBuilder
     public GlassBuilder InputDropdown(IEnumerable<string> items, string defaultItem = null)
     {
         _inputMode = GlassInputMode.Dropdown;
-        _inputDropdownItems = [.. items];
+        _inputDropdownItems = items != null ? [.. items] : [];
         _inputDefault = defaultItem;
         return this;
     }
@@ -254,6 +261,7 @@ public sealed class GlassBuilder
         InputPlaceholder = _inputPlaceholder,
         InputDropdownItems = _inputDropdownItems,
         InputDefault = _inputDefault,
+        InputShowCapsLockHint = _inputShowCapsLockHint,
         DetailText = _detailText,
         ShowProgress = _showProgress,
         ProgressValue = _progressValue,

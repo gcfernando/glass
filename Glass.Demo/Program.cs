@@ -34,7 +34,7 @@ internal sealed class DemoForm : Form
 {
     public DemoForm()
     {
-        Text = "Glass.Message v1.0 — Feature Gallery";
+        Text = "Glass.Message v1.0.2 — Feature Gallery";
         ClientSize = new Size(680, 760);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(18, 26, 46);
@@ -59,6 +59,7 @@ internal sealed class DemoForm : Form
             ("\"Don't Show Again\" Checkbox",             Demo_CheckBox),
             ("Inline Text Input",                         Demo_Input),
             ("Password Input",                            Demo_Password),
+            ("Password — Caps Lock Hint Off",             Demo_PasswordNoCapsLock),
             ("Drop-down Input",                           Demo_Dropdown),
             ("Expandable Detail Section",                 Demo_Detail),
             ("Determinate Progress Bar",                  Demo_Progress),
@@ -294,8 +295,9 @@ internal sealed class DemoForm : Form
                 "Authentication is required to connect to Contoso ERP.\n\n" +
                 "Server:  sql-prod-01.contoso.com\n" +
                 "Domain:  CONTOSO   ·   Auth: Windows Integrated\n\n" +
-                "Tip: click the eye to reveal what you typed. If Caps Lock is on, a themed " +
-                "warning appears below the field automatically.")
+                "Tip: click the eye to reveal what you typed. A Caps Lock warning appears " +
+                "below the field by default; pass showCapsLockHint: false to suppress it " +
+                "(demonstrated in the next demo).")
             .Title("Sign In — Contoso ERP")
             .Icon(MessageBoxIcon.Warning)
             .InputPassword("Active Directory password")
@@ -308,6 +310,27 @@ internal sealed class DemoForm : Form
                 "Connected to sql-prod-01.contoso.com\n" +
                 $"Credential length: {r.InputText.Length} chars  ·  Session valid for 8 hours",
                 "Signed In", MessageBoxIcon.Information);
+        }
+    }
+
+    private static void Demo_PasswordNoCapsLock()
+    {
+        var r = GlassMessage.Create(
+                "Enter your PIN to unlock the device.\n\n" +
+                "This field was created with .InputPassword(\"PIN\", showCapsLockHint: false).\n" +
+                "The Caps Lock badge is suppressed — useful for PIN entry or kiosk flows where " +
+                "the hint would be confusing or where uppercase input is intentional.")
+            .Title("Device Locked — PIN Entry")
+            .Icon(MessageBoxIcon.Warning)
+            .InputPassword("PIN", showCapsLockHint: false)
+            .Buttons("Unlock", "Cancel")
+            .ShowEx();
+
+        if (r.Button == DialogResult.OK)
+        {
+            _ = GlassMessage.Show(
+                $"PIN accepted ({r.InputText.Length} character(s) entered).",
+                "Unlocked", MessageBoxIcon.Information);
         }
     }
 

@@ -88,8 +88,8 @@ public sealed class GlassTheme : IDisposable
     /// <summary>The default palette (the dark blue theme).</summary>
     public static GlassTheme Default { get; } = Preset(new GlassTheme());
 
-    /// <summary>A dark blue palette.</summary>
-    public static GlassTheme Dark { get; } = Preset(new GlassTheme());
+    /// <summary>A dark blue palette. Identical to <see cref="Default"/>.</summary>
+    public static GlassTheme Dark { get; } = Default;
 
     /// <summary>A bright palette tuned for light mode.</summary>
     public static GlassTheme Light { get; } = Preset(new GlassTheme

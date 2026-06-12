@@ -58,6 +58,9 @@ public sealed class GlassToastOptions
 /// Static façade for showing toasts. Tracks the live toasts so they can be
 /// stacked and re-stacked as others appear and disappear.
 /// </summary>
+/// <remarks>
+/// All methods must be called on the application's UI (STA) thread.
+/// </remarks>
 public static class GlassToast
 {
     // Guards the shared list because toasts may be created/closed from the UI
@@ -87,15 +90,16 @@ public static class GlassToast
             return;
         }
 
-        options.Theme ??= GlassMessage.DefaultTheme ?? GlassTheme.Default;
+        // Resolve the theme locally — never mutate the caller's options object so
+        // the same GlassToastOptions instance can be reused across multiple Show
+        // calls while always picking up the current DefaultTheme.
+        var resolvedTheme = options.Theme ?? GlassMessage.DefaultTheme ?? GlassTheme.Default;
 
-        var form = new ToastForm(options);
-        lock (_lock)
-        {
-            _active.Add(form);
-        }
+        var form = new ToastForm(options, resolvedTheme);
 
-        // When this toast closes, re-pack the rest at its position to close the gap.
+        // Register the close handler BEFORE adding to the list so there is no
+        // window where a synchronous OS WM_CLOSE could fire without a handler and
+        // leave a ghost entry in _active.
         form.FormClosed += (s, e) =>
         {
             lock (_lock)
@@ -106,8 +110,31 @@ public static class GlassToast
             ReStack(options.Position);
         };
 
-        PositionToast(form, options.Position);
-        form.Show();
+        // Safety-net: if the form is disposed without FormClosed firing (e.g. on
+        // Application.Exit), ensure it is removed from the active list.
+        form.Disposed += (s, e) =>
+        {
+            lock (_lock)
+            {
+                _ = _active.Remove(form);
+            }
+        };
+
+        lock (_lock)
+        {
+            _active.Add(form);
+        }
+
+        try
+        {
+            PositionToast(form, options.Position);
+            form.Show();
+        }
+        catch
+        {
+            lock (_lock) { _ = _active.Remove(form); }
+            throw;
+        }
     }
 
     /// <summary>
@@ -118,14 +145,12 @@ public static class GlassToast
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         options ??= new GlassToastOptions();
-        options.Theme ??= GlassMessage.DefaultTheme ?? GlassTheme.Default;
 
-        var form = new ToastForm(options);
-        lock (_lock)
-        {
-            _active.Add(form);
-        }
+        var resolvedTheme = options.Theme ?? GlassMessage.DefaultTheme ?? GlassTheme.Default;
 
+        var form = new ToastForm(options, resolvedTheme);
+
+        // Register handlers before adding to list (same race-prevention as Show).
         form.FormClosed += (s, e) =>
         {
             lock (_lock)
@@ -137,24 +162,46 @@ public static class GlassToast
             _ = tcs.TrySetResult(true);
         };
 
-        PositionToast(form, options.Position);
-        form.Show();
+        // Safety-net: application shutdown disposes forms without FormClosed firing.
+        // Ensure the awaiting task always completes.
+        form.Disposed += (s, e) =>
+        {
+            lock (_lock)
+            {
+                _ = _active.Remove(form);
+            }
+
+            _ = tcs.TrySetResult(true);
+        };
+
+        lock (_lock)
+        {
+            _active.Add(form);
+        }
+
+        try
+        {
+            PositionToast(form, options.Position);
+            form.Show();
+        }
+        catch
+        {
+            lock (_lock) { _ = _active.Remove(form); }
+            throw;
+        }
+
         return tcs.Task;
     }
 
-    // The working area a toast lives in, falling back gracefully if no screen is set.
     private static Rectangle WorkingAreaOf(ToastForm form) =>
         form.TargetScreen?.WorkingArea
         ?? Screen.PrimaryScreen?.WorkingArea
         ?? new Rectangle(0, 0, 1920, 1080);
 
-    // Two toasts share a stack only when they sit at the same corner of the same
-    // monitor, so toasts on different screens never offset each other.
     private static bool SameStack(ToastForm a, ToastForm b) =>
         a.Position == b.Position
         && string.Equals(a.TargetScreen?.DeviceName, b.TargetScreen?.DeviceName, StringComparison.Ordinal);
 
-    // Places a new toast, offsetting it past any toasts already in its stack.
     private static void PositionToast(ToastForm form, ToastPosition pos)
     {
         const int margin = 12;
@@ -174,9 +221,6 @@ public static class GlassToast
         form.Location = CalcToastLocation(WorkingAreaOf(form), form.Width, form.Height, pos, stackedH, margin);
     }
 
-    // Recomputes every toast position after one closes so each per-screen stack stays
-    // tight. Positions are gathered under the lock, then applied outside it to avoid
-    // doing UI work while holding the lock.
     private static void ReStack(ToastPosition pos)
     {
         var moves = new List<(ToastForm form, Point location)>();
@@ -184,7 +228,6 @@ public static class GlassToast
         lock (_lock)
         {
             const int margin = 12;
-            // Independent running offset per (screen, position) stack.
             var stackHeights = new Dictionary<string, int>(StringComparer.Ordinal);
 
             foreach (var f in _active)
@@ -210,8 +253,6 @@ public static class GlassToast
         }
     }
 
-    // Resolves which monitor a toast should appear on: an explicit override, else the
-    // screen with the active window, else the cursor's screen, else primary.
     private static Screen ResolveScreen(GlassToastOptions options)
     {
         if (options.Screen != null)
@@ -235,9 +276,8 @@ public static class GlassToast
         }
     }
 
-    // Maps a position + stack offset onto an actual screen point. The stack grows
-    // upward from the bottom corners and downward from the top corners.
-    private static Point CalcToastLocation(Rectangle screen, int w, int h,
+    // Maps a position + stack offset onto an actual screen point.
+    internal static Point CalcToastLocation(Rectangle screen, int w, int h,
                                             ToastPosition pos, int stackedH, int margin)
     {
         return pos switch
@@ -270,14 +310,10 @@ public static class GlassToast
         /// <summary>The monitor this toast is anchored to (resolved when it was created).</summary>
         internal Screen TargetScreen { get; }
 
-        // Two timers: _fadeTimer animates opacity in/out; _stayTimer waits out the
-        // visible duration in between.
         private System.Windows.Forms.Timer _fadeTimer;
         private System.Windows.Forms.Timer _stayTimer;
         private bool _fadingOut;
         private int _fadeStep;
-        // Measured once in MeasureAndSize and reused at paint time, so the title is
-        // never re-measured on every repaint (and the two stay in lock-step).
         private int _titleH;
         private const int _fadeTicks = 7;
         private const int _toastWidth = 360;
@@ -285,10 +321,10 @@ public static class GlassToast
         private const int _iconW = 20;
         private const int _iconGap = 8;
 
-        public ToastForm(GlassToastOptions opts)
+        public ToastForm(GlassToastOptions opts, GlassTheme resolvedTheme)
         {
             _opts = opts;
-            _theme = opts.Theme;
+            _theme = resolvedTheme;
             _icon = GlassDialog.GetCachedSystemIcon(opts.Icon);
             TargetScreen = ResolveScreen(opts);
 
@@ -299,7 +335,7 @@ public static class GlassToast
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            Opacity = 0.0;            // start hidden; OnLoad fades us in
+            Opacity = 0.0;
             BackColor = _theme.BackgroundBottom;
             Cursor = Cursors.Hand;
             AccessibleRole = AccessibleRole.Alert;
@@ -310,11 +346,26 @@ public static class GlassToast
             MeasureAndSize();
             ApplyRegion();
 
-            Click += (s, e) => { opts.OnClick?.Invoke(); BeginDismiss(); };
+            // Use try/finally so a throwing OnClick callback never prevents dismiss.
+            Click += (s, e) =>
+            {
+                try { opts.OnClick?.Invoke(); }
+                catch { /* OnClick exceptions must never prevent the toast from closing */ }
+                finally { BeginDismiss(); }
+            };
         }
 
-        // Measures the title and word-wrapped message to size the toast to content,
-        // keeping a fixed width and padding the icon column when present.
+        // Keyboard accessibility: Escape dismisses the toast.
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                BeginDismiss();
+            }
+        }
+
         private void MeasureAndSize()
         {
             var hasTitle = !string.IsNullOrEmpty(_opts.Title);
@@ -337,8 +388,6 @@ public static class GlassToast
             ClientSize = new Size(_toastWidth, totalH);
         }
 
-        // Software clipping region for rounded corners — only used when the OS
-        // can't give us real DWM-rounded corners (set later in OnHandleCreated).
         private void ApplyRegion()
         {
             if (_effectiveRadius <= 0 || _dwmRounded)
@@ -350,8 +399,6 @@ public static class GlassToast
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            // Prefer crisp DWM corners on Windows 11; if we get them, drop the
-            // jagged software region.
             if (_effectiveRadius > 0 && GlassDialog.EnableModernCorners(Handle))
             {
                 _dwmRounded = true;
@@ -362,8 +409,6 @@ public static class GlassToast
 
         protected override void OnLoad(EventArgs e) { base.OnLoad(e); StartFade(fadingIn: true); }
 
-        // Drives both the fade-in and fade-out with an eased opacity ramp. On a
-        // completed fade-in it arms the stay timer; on a completed fade-out it closes.
         private void StartFade(bool fadingIn)
         {
             _fadingOut = !fadingIn;
@@ -373,7 +418,7 @@ public static class GlassToast
             {
                 _fadeStep++;
                 var t = Math.Min(1.0, (double)_fadeStep / _fadeTicks);
-                var eased = t * t * (3.0 - (2.0 * t));   // smoothstep
+                var eased = t * t * (3.0 - (2.0 * t));
 
                 Opacity = _fadingOut
                     ? _theme.Opacity * (1.0 - eased)
@@ -399,10 +444,9 @@ public static class GlassToast
             _fadeTimer.Start();
         }
 
-        // Cancels any pending timers and begins the fade-out. Safe to call from a
-        // click or from the stay timer.
         internal void BeginDismiss()
         {
+            if (_fadingOut) { return; }
             _stayTimer?.Stop();
             _stayTimer?.Dispose();
             _stayTimer = null;
@@ -415,15 +459,11 @@ public static class GlassToast
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            g.CompositingQuality = CompositingQuality.HighQuality;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            // Use the shared quality helper for consistency with GlassDialog.
+            GlassDialog.SetQuality(g);
 
             var w = ClientSize.Width;
             var h = ClientSize.Height;
-            // When DWM rounds the window, draw squared content so it doesn't fight
-            // the hardware corners.
             var r = _dwmRounded ? 0 : _effectiveRadius;
 
             using (var path = GlassDialog.RoundRect(new Rectangle(0, 0, w, h), r))
@@ -434,7 +474,6 @@ public static class GlassToast
                 g.FillPath(brush, path);
             }
 
-            // Soft glow plus crisp edge, same treatment as the dialog border.
             using (var borderPath = GlassDialog.RoundRect(new Rectangle(0, 0, w - 1, h - 1), r))
             {
                 using var glow = new Pen(Color.FromArgb(60, _theme.BorderColor), 3f);

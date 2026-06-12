@@ -8,6 +8,7 @@
 //  Developer   ::> Gehan Fernando
 // -----------------------------------------------------------------------------
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -20,30 +21,52 @@ namespace Glass;
 /// <see cref="Create"/> for the fluent builder and <see cref="ShowAsync(string, string, MessageBoxIcon, MessageBoxButtons, CancellationToken)"/>
 /// for non-blocking dialogs.
 /// </summary>
+/// <remarks>
+/// All methods that create or show a dialog must be called on the application's
+/// UI (STA) thread. Calling from a background or thread-pool thread will throw
+/// <see cref="System.InvalidOperationException"/>.
+/// </remarks>
 public static class GlassMessage
 {
+    // Volatile backing fields guarantee that writes from any thread are immediately
+    // visible to all readers — including on weakly-ordered architectures such as
+    // Windows on ARM (Surface Pro X, Copilot+ PCs).
+    private static volatile GlassTheme _defaultTheme = GlassTheme.Default;
+    private static volatile bool _useRoundedCorners;
+    private static volatile bool _playSystemSounds;
+
     /// <summary>
     /// Theme applied when a caller doesn't specify one. Defaults to the built-in
     /// dark palette; assign <see cref="GlassTheme.AutoDetect"/> to follow Windows.
     /// </summary>
-    public static GlassTheme DefaultTheme { get; set; } = GlassTheme.Default;
+    public static GlassTheme DefaultTheme
+    {
+        get => _defaultTheme;
+        set => _defaultTheme = value;
+    }
 
     /// <summary>
     /// Global default for rounded corners. Individual dialogs can override this
     /// through the builder; left off by default to match classic square chrome.
     /// </summary>
-    public static bool UseRoundedCorners { get; set; } = false;
+    public static bool UseRoundedCorners
+    {
+        get => _useRoundedCorners;
+        set => _useRoundedCorners = value;
+    }
 
     /// <summary>
     /// Global default for playing the icon's Windows system sound when a dialog
     /// opens (as the classic <see cref="MessageBox"/> does). Off by default;
     /// individual dialogs can override this through the builder's <c>Sound</c> method.
     /// </summary>
-    public static bool PlaySystemSounds { get; set; } = false;
+    public static bool PlaySystemSounds
+    {
+        get => _playSystemSounds;
+        set => _playSystemSounds = value;
+    }
 
     // --- MessageBox-compatible synchronous overloads --------------------------
-    // Each one simply fills in the defaults and forwards to Core(), so behaviour
-    // stays identical no matter which overload a caller reaches for.
 
     public static DialogResult Show(string message)
         => Core(null, message, string.Empty, MessageBoxIcon.None,
@@ -83,6 +106,7 @@ public static class GlassMessage
     /// <paramref name="cancellationToken"/> closes the dialog (yielding
     /// <see cref="DialogResult.Cancel"/>) if it is cancelled while open.
     /// </summary>
+    /// <remarks>Must be called on the UI (STA) thread.</remarks>
     public static Task<DialogResult> ShowAsync(
         string message,
         string title = "",
@@ -95,6 +119,7 @@ public static class GlassMessage
     /// <summary>
     /// Async overload that also accepts an explicit <paramref name="theme"/>.
     /// </summary>
+    /// <remarks>Must be called on the UI (STA) thread.</remarks>
     public static Task<DialogResult> ShowAsync(
         string message,
         string title,
@@ -111,9 +136,6 @@ public static class GlassMessage
     /// </summary>
     public static GlassBuilder Create(string message) => new(message);
 
-    // Builds the config shared by the simple Show() overloads. Null arguments are
-    // coalesced here so the dialog never has to defend against them, and the theme
-    // falls back through DefaultTheme to the built-in default.
     private static GlassDialogConfig BasicConfig(
         string message, string title, MessageBoxIcon icon, MessageBoxButtons buttons,
         MessageBoxDefaultButton defaultButton, GlassTheme theme, string[] customLabels)
@@ -124,12 +146,10 @@ public static class GlassMessage
             Icon = icon,
             Buttons = buttons,
             DefaultButton = defaultButton,
-            Theme = theme ?? DefaultTheme ?? GlassTheme.Default,
+            Theme = theme ?? _defaultTheme ?? GlassTheme.Default,
             CustomLabels = customLabels,
         };
 
-    // Single place that actually constructs and shows a modal dialog. The dialog
-    // is disposed via 'using' so its fonts/pens/timers are always released.
     internal static DialogResult Core(
         IWin32Window owner,
         string message,
@@ -145,20 +165,15 @@ public static class GlassMessage
         return owner == null ? dlg.ShowDialog() : dlg.ShowDialog(owner);
     }
 
-    // Extended modal path used by the builder: returns the full GlassResult so the
-    // caller also gets the checkbox state and any typed input.
     internal static GlassResult CoreEx(IWin32Window owner, GlassDialogConfig config)
     {
-        config.Theme ??= DefaultTheme ?? GlassTheme.Default;
-        config.UseRoundedCorners ??= UseRoundedCorners;
+        config.Theme ??= _defaultTheme ?? GlassTheme.Default;
+        config.UseRoundedCorners ??= _useRoundedCorners;
         using var dlg = new GlassDialog(config);
         var result = owner == null ? dlg.ShowDialog() : dlg.ShowDialog(owner);
         return new GlassResult(result, dlg.CheckBoxChecked, dlg.InputText);
     }
 
-    // Non-modal path backing ShowAsync. A TaskCompletionSource bridges the dialog's
-    // FormClosed event to the awaiting caller; the dialog is shown modeless so the
-    // message pump keeps running.
     private static async Task<DialogResult> CoreAsync(
         IWin32Window owner,
         string message,
@@ -175,13 +190,11 @@ public static class GlassMessage
         return result.Button;
     }
 
-    // Extended non-modal path backing the builder's ShowExAsync — same plumbing as
-    // CoreAsync but surfaces the full GlassResult (button + checkbox + input).
     internal static Task<GlassResult> CoreExAsync(
         IWin32Window owner, GlassDialogConfig config, CancellationToken ct)
     {
-        config.Theme ??= DefaultTheme ?? GlassTheme.Default;
-        config.UseRoundedCorners ??= UseRoundedCorners;
+        config.Theme ??= _defaultTheme ?? GlassTheme.Default;
+        config.UseRoundedCorners ??= _useRoundedCorners;
         return ShowModeless(owner, new GlassDialog(config), ct);
     }
 
@@ -202,28 +215,47 @@ public static class GlassMessage
             {
                 if (!dlg.IsDisposed && dlg.IsHandleCreated)
                 {
-                    _ = dlg.BeginInvoke(new System.Action(() =>
+                    // BeginInvoke can throw InvalidOperationException or
+                    // ObjectDisposedException if the handle is destroyed in the
+                    // narrow window between the IsHandleCreated check above and the
+                    // post.  Either exception means the dialog is closing anyway, so
+                    // swallow both — the FormClosed / Disposed handlers will set the
+                    // TCS.
+                    try
                     {
-                        if (!dlg.IsDisposed)
+                        _ = dlg.BeginInvoke(new System.Action(() =>
                         {
-                            dlg.RequestClose(DialogResult.Cancel);
-                        }
-                    }));
+                            if (!dlg.IsDisposed)
+                            {
+                                dlg.RequestClose(DialogResult.Cancel);
+                            }
+                        }));
+                    }
+                    catch (ObjectDisposedException) { }
+                    catch (InvalidOperationException) { }
                 }
             });
         }
 
+        // Primary completion path: the dialog closes normally.
         dlg.FormClosed += (s, e) =>
         {
             reg.Dispose();
-            // A dialog dismissed without a result (e.g. via cancellation) is
-            // reported as Cancel for predictability. The checkbox/input state is
-            // read here, before the form disposes its child controls below.
             var button = dlg.DialogResult == DialogResult.None
                 ? DialogResult.Cancel
                 : dlg.DialogResult;
             _ = tcs.TrySetResult(new GlassResult(button, dlg.CheckBoxChecked, dlg.InputText));
             dlg.Dispose();
+        };
+
+        // Safety-net path: if the form is disposed (e.g. Application.Exit, parent
+        // form closed) without FormClosed firing, the TCS must still be completed
+        // so every await ShowAsync / await Completion returns instead of hanging.
+        // TrySetResult is idempotent — the first call wins; the second is a no-op.
+        dlg.Disposed += (s, e) =>
+        {
+            reg.Dispose();
+            _ = tcs.TrySetResult(new GlassResult(DialogResult.Cancel, false, string.Empty));
         };
 
         if (owner != null)
@@ -245,12 +277,10 @@ public static class GlassMessage
         return tcs.Task;
     }
 
-    // Shows a modeless progress dialog and hands back a controller the caller uses to
-    // update or close it. Backs GlassBuilder.ShowProgress.
     internal static GlassProgressController CoreProgress(IWin32Window owner, GlassDialogConfig config)
     {
-        config.Theme ??= DefaultTheme ?? GlassTheme.Default;
-        config.UseRoundedCorners ??= UseRoundedCorners;
+        config.Theme ??= _defaultTheme ?? GlassTheme.Default;
+        config.UseRoundedCorners ??= _useRoundedCorners;
         var dlg = new GlassDialog(config);
         var task = ShowModeless(owner, dlg, default);
         return new GlassProgressController(dlg, task);

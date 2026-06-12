@@ -71,6 +71,10 @@ public sealed class GlassProgressController
     }
 
     // Runs an action on the dialog's UI thread, hopping threads only when needed.
+    // Uses BeginInvoke (fire-and-forget) rather than Invoke by design: callers like
+    // SetValue / SetMessage are best-effort UI refreshes that must never block the
+    // worker thread. The correct way to wait for the dialog to close is to await
+    // Completion — not to spin on these update calls.
     // Swallows the benign races where the dialog closed underneath us.
     private void Marshal(Action action)
     {
