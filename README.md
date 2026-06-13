@@ -94,19 +94,15 @@ GlassMessage.Show(
 
 ---
 
-## 🆕 What's new in v1.0.2
+## 🆕 What's new in v1.0.3
 
 | Area | Change |
 |---|---|
-| **Multi-monitor** | Dialogs now centre on the screen containing the mouse cursor, not always the primary monitor |
-| **Password input** | New `showCapsLockHint` parameter on `InputPassword()` — suppress the Caps Lock badge per dialog |
-| **Theming** | `GlassTheme.Dark` is now a proper named property (previously only `GlassTheme.Default` existed) |
-| **Detail panel** | Detail `TextBox` now respects the active theme colours — fixed on Light and High Contrast themes |
-| **Countdown** | Countdown timer uses a `Stopwatch` wall-clock — no more drift under CPU load |
-| **Drag** | Drag state resets when the dialog loses focus — prevents "stuck" window after Alt+Tab |
-| **Password rebuild** | Reveal-eye state is preserved after a DPI-change layout rebuild |
+| **Docs** | Removed an unsubstantiated adoption claim from the NuGet README |
+| **Packaging** | More reliable NuGet version badge and refreshed README badges |
+| **CI** | Release workflow actions bumped to Node 24 (checkout v6, upload v7, download v8, setup-dotnet v5) |
 
-See the full [CHANGELOG](CHANGELOG.md) for all 13 fixes.
+A maintenance release — no library code or API changes. See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.2** feature and fix highlights.
 
 ---
 

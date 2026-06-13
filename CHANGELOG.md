@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > without installing .NET. The notes below become the release description
 > automatically. See the [Releases page](../../releases).
 
+## [1.0.3] - 2026-06-13
+
+A maintenance release — documentation, packaging, and CI only. No library code
+or public API changes.
+
+### Changed
+
+- **Docs** — removed an unsubstantiated adoption claim from the NuGet README
+  (`README.nuget.md`).
+- **Packaging** — switched to a more reliable NuGet version badge and refreshed
+  the README badges (camo cache `cacheSeconds` lowered so the version badge
+  updates promptly).
+- **CI** — bumped the release workflow actions to Node 24: `actions/checkout@v6`,
+  `actions/upload-artifact@v7`, `actions/download-artifact@v8`, and
+  `actions/setup-dotnet@v5`; step names normalised to PascalCase.
+
 ## [1.0.2] - 2026-06-12
 
 ### Added
@@ -163,5 +179,6 @@ First public release. 🎉
 - **Release pipeline** — pushing a `v*` tag builds every target framework, runs
   the tests, and publishes a GitHub Release with notes and downloadable assets.
 
+[1.0.3]: ../../releases/tag/v1.0.3
 [1.0.2]: ../../releases/tag/v1.0.2
 [1.0.1]: ../../releases/tag/v1.0.1

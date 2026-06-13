@@ -49,7 +49,7 @@
   <PropertyGroup>
     <PackageId>Glass.Message</PackageId>
     <Title>Glass.Message</Title>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <Authors>Gehan Fernando</Authors>
     <Product>Glass.Message</Product>
     <Description>Next-level modern replacement for MessageBox on Windows — Mica/Acrylic backdrop, auto dark/light theme, animations, toast notifications, async API, inline input, countdown, expandable detail, progress bar, RTL, and more. Drop-in compatible: GlassMessage.Show(...) compiles as-is.</Description>

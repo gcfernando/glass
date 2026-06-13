@@ -23,9 +23,9 @@ using System.Runtime.InteropServices;
 [assembly: Guid("2a291aee-854d-4e3e-81e7-721b4d829213")]
 
 // Versioning. Keep these in step with <Version> in Glass.Message.csproj.
-[assembly: AssemblyVersion("1.0.2")]
-[assembly: AssemblyFileVersion("1.0.2")]
-[assembly: AssemblyInformationalVersion("1.0.2")]
+[assembly: AssemblyVersion("1.0.3")]
+[assembly: AssemblyFileVersion("1.0.3")]
+[assembly: AssemblyInformationalVersion("1.0.3")]
 
 // Lets the test project reach the library's internal types (GlassDialog,
 // GlassDialogConfig, RoundRect, …).
