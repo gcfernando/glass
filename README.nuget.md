@@ -9,8 +9,6 @@ Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API �
 ![.NET](https://img.shields.io/badge/.NET-4.8.1%20%7C%208%20%7C%209%20%7C%2010-512BD4?logo=dotnet&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-3da639)
 
-> Used by developers at companies including **Microsoft**, **Google**, and **Oracle**.
-
 ![Glass.Message feature gallery — modern Windows 11 styled WinForms dialog](https://raw.githubusercontent.com/gcfernando/glass/main/Images/Feature%20Gallery.png)
 
 ---
