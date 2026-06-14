@@ -54,6 +54,7 @@ public sealed class GlassBuilder
     private bool _showProgress;
     private int _progressValue = -1;
     private int _progressMax = 100;
+    private GlassProgressActivity _progressActivity = GlassProgressActivity.None;
 
     private bool _rightToLeft;
 
@@ -199,6 +200,20 @@ public sealed class GlassBuilder
         return this;
     }
 
+    /// <summary>
+    /// Selects the directional flow animation painted over the progress bar so it
+    /// matches the operation in progress — e.g. <see cref="GlassProgressActivity.Upload"/>,
+    /// <see cref="GlassProgressActivity.Download"/>, or <see cref="GlassProgressActivity.Sync"/>.
+    /// Layers on top of either a determinate (<see cref="Progress(int, int)"/>) or
+    /// indeterminate (<see cref="ProgressIndeterminate"/>) bar; the value is unaffected.
+    /// </summary>
+    public GlassBuilder ProgressActivity(GlassProgressActivity activity)
+    {
+        _showProgress = true;
+        _progressActivity = activity;
+        return this;
+    }
+
     /// <summary>Mirrors the layout for right-to-left languages.</summary>
     public GlassBuilder RightToLeft(bool enable = true) { _rightToLeft = enable; return this; }
 
@@ -266,6 +281,7 @@ public sealed class GlassBuilder
         ShowProgress = _showProgress,
         ProgressValue = _progressValue,
         ProgressMax = _progressMax,
+        ProgressActivity = _progressActivity,
         RightToLeft = _rightToLeft,
         UseRoundedCorners = _roundedCorners,
         PlaySound = _playSound,

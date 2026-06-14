@@ -646,7 +646,7 @@ internal sealed class GlassDialog : Form
         if (_cfg.HasProgress)
         {
             y += Pad;
-            _progressPanel = new GlassProgressPanel(_theme, _cfg.ProgressValue, _cfg.ProgressMax)
+            _progressPanel = new GlassProgressPanel(_theme, _cfg.ProgressValue, _cfg.ProgressMax, _cfg.ProgressActivity)
             {
                 Bounds = new Rectangle(Pad, y, fw - (Pad * 2), ProgressH),
                 AccessibleName = "Progress",
@@ -1204,6 +1204,8 @@ internal sealed class GlassDialog : Form
     // relevant control isn't present, so callers never have to check.
     internal void SetProgressValue(int value) => _progressPanel?.SetValue(value);
 
+    internal void SetProgressActivity(GlassProgressActivity activity) => _progressPanel?.SetActivity(activity);
+
     internal void SetMessageText(string message)
     {
         if (_messageLabel == null || _messageLabel.IsDisposed)
@@ -1707,34 +1709,161 @@ internal sealed class GlassDialog : Form
     // highlight; otherwise it draws a determinate fill with a glossy top sheen.
     private sealed class GlassProgressPanel : Control
     {
+        // The visual language for the flow overlay. Each style is a distinct,
+        // self-contained animation; activities in the same "family" share one so the
+        // set stays cohesive, while Direction and Speed give each its own character.
+        private enum FlowStyle
+        {
+            Chevrons,   // diagonal barber-pole bands — generic file movement
+            Packets,    // glowing dots gliding along — live data transfer
+            Comet,      // a soft shine band sweeping across — CPU/scan work
+            Pulse,      // the whole fill breathes in and out — crypto/handshake
+            Wave,       // a sinusoidal brightness ripple — reconcile/backup/sync
+            Segments,   // marching rounded blocks — archive/compression
+        }
+
+        // How an activity's flow looks and moves. Direction +1 flows forward (toward
+        // the end of the bar), -1 flows backward (incoming), 0 eases back and forth;
+        // Speed scales the travel per tick. A null spec (activity None) means no
+        // overlay at all.
+        private readonly struct FlowSpec
+        {
+            public readonly FlowStyle Style;
+            public readonly int Direction;
+            public readonly float Speed;
+            public FlowSpec(FlowStyle style, int direction, float speed)
+            { Style = style; Direction = direction; Speed = speed; }
+        }
+
+        // Per-activity flow behaviour. Kept here so the visual language stays
+        // consistent across every dialog while the public knob remains the enum.
+        // Activities are grouped into visual families (one FlowStyle each), then
+        // separated within a family by direction and speed.
+        private static FlowSpec? FlowFor(GlassProgressActivity activity) => activity switch
+        {
+            // Packets — live data crossing a link.
+            GlassProgressActivity.Upload => new FlowSpec(FlowStyle.Packets, +1, 1.5f),
+            GlassProgressActivity.Download => new FlowSpec(FlowStyle.Packets, -1, 1.5f),
+            GlassProgressActivity.Stream => new FlowSpec(FlowStyle.Packets, +1, 1.0f),
+
+            // Chevrons — files moving between locations.
+            GlassProgressActivity.FileTransfer => new FlowSpec(FlowStyle.Chevrons, +1, 1.0f),
+            GlassProgressActivity.Import => new FlowSpec(FlowStyle.Chevrons, -1, 1.2f),
+
+            // Segments — archive / block operations.
+            GlassProgressActivity.Compress => new FlowSpec(FlowStyle.Segments, +1, 1.4f),
+            GlassProgressActivity.Extract => new FlowSpec(FlowStyle.Segments, -1, 1.4f),
+            GlassProgressActivity.Export => new FlowSpec(FlowStyle.Segments, +1, 1.0f),
+
+            // Wave — reconcile / backup / restore / sync.
+            GlassProgressActivity.Backup => new FlowSpec(FlowStyle.Wave, +1, 0.9f),
+            GlassProgressActivity.Restore => new FlowSpec(FlowStyle.Wave, -1, 0.9f),
+            GlassProgressActivity.Sync => new FlowSpec(FlowStyle.Wave, 0, 1.2f),
+
+            // Pulse — crypto / handshake.
+            GlassProgressActivity.Encrypt => new FlowSpec(FlowStyle.Pulse, +1, 1.1f),
+            GlassProgressActivity.Decrypt => new FlowSpec(FlowStyle.Pulse, -1, 1.1f),
+            GlassProgressActivity.Connecting => new FlowSpec(FlowStyle.Pulse, 0, 1.8f),
+
+            // Comet — CPU-bound / scan work.
+            GlassProgressActivity.Install => new FlowSpec(FlowStyle.Comet, +1, 0.8f),
+            GlassProgressActivity.Search => new FlowSpec(FlowStyle.Comet, +1, 1.8f),
+            GlassProgressActivity.Processing => new FlowSpec(FlowStyle.Comet, +1, 1.2f),
+
+            _ => null,
+        };
+
         private readonly GlassTheme _theme;
         private int _value;
         private readonly int _max;
-        private float _phase;   // marquee animation phase, advanced each tick
-        private readonly System.Windows.Forms.Timer _ticker;
+        private GlassProgressActivity _activity;
+        private FlowSpec? _flow;
+        private float _phase;       // marquee animation phase, advanced each tick
+        private float _flowPhase;   // monotonic flow clock (pixels travelled), advanced each tick
+        private System.Windows.Forms.Timer _ticker;
         private GraphicsPath _trackPath;
         private Size _trackSize;
         private SolidBrush _trackBgBrush;  // cached — same colour for the control's lifetime
+        private readonly SolidBrush _stripeBrush;  // cached translucent overlay shared by the flow renderers
+        private readonly SolidBrush _dynBrush = new(Color.White);  // reused for per-column/per-frame fills; colour mutated in place
+        private Bitmap _packetSprite;  // pre-rendered glow dot, rebuilt only when the bar height changes
+        private int _packetSpriteH = -1;
+        private readonly PointF[] _chevronPts = new PointF[4];  // reused per band so chevrons allocate no arrays
+        private readonly Pen _trackBorderPen;        // cached — fixed colour/width for the control's lifetime
+        private LinearGradientBrush _bgBrush;        // cached themed background; rebuilt only if size/position changes
+        private Rectangle _bgKey = Rectangle.Empty;  // the gradient rect the cached background was built for
 
-        public GlassProgressPanel(GlassTheme theme, int value, int max)
+        public GlassProgressPanel(GlassTheme theme, int value, int max, GlassProgressActivity activity)
         {
             _theme = theme;
             _value = value;
             _max = Math.Max(1, max);
-            _trackBgBrush = new SolidBrush(Color.FromArgb(30, theme.AccentColor));
+            _activity = activity;
+            _flow = FlowFor(activity);
+            _trackBgBrush = new SolidBrush(Color.FromArgb(18, theme.AccentColor));
+            _stripeBrush = new SolidBrush(Color.FromArgb(115, 255, 255, 255));
+            _trackBorderPen = new Pen(Color.FromArgb(38, theme.BorderColor), 1f);
+            // Opaque + paint our own themed background (see OnPaint) so the bar blends
+            // into the dialog's gradient instead of clearing to a flat colour that
+            // would show as a dark box around the rounded track.
             SetStyle(ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.AllPaintingInWmPaint |
-                     ControlStyles.UserPaint, true);
-            if (_value == -1)
+                     ControlStyles.UserPaint |
+                     ControlStyles.Opaque, true);
+            EnsureTicker();
+        }
+
+        // A single timer drives both the marquee (indeterminate) and the directional
+        // flow stripes, so an animated bar only ever costs one timer. Runs whenever
+        // the bar is indeterminate or an activity flow is active.
+        private void EnsureTicker()
+        {
+            var needsTicker = _value == -1 || _flow != null;
+            if (needsTicker == (_ticker != null))
             {
-                // 33 ms ≈ 30 fps is imperceptibly identical to 60 fps for a slow
-                // sine-wave marquee and halves the timer pressure on the message pump.
-                // Phase step scaled proportionally (0.045 × 33/16 ≈ 0.093) so the
-                // animation speed is unchanged.
+                return;
+            }
+
+            if (needsTicker)
+            {
+                // 33 ms ≈ 30 fps is imperceptibly identical to 60 fps for these slow
+                // animations and halves the timer pressure on the message pump.
                 _ticker = new System.Windows.Forms.Timer { Interval = 33 };
-                _ticker.Tick += (s, e) => { _phase = (_phase + 0.093f) % (float)(Math.PI * 2.0); Invalidate(); };
+                _ticker.Tick += OnTick;
                 _ticker.Start();
             }
+            else
+            {
+                _ticker.Stop();
+                _ticker.Dispose();
+                _ticker = null;
+            }
+        }
+
+        private void OnTick(object sender, EventArgs e)
+        {
+            // Marquee chunk phase (only meaningful when indeterminate). Phase step
+            // 0.093 ≈ 0.045 × 33/16 keeps the historic 16 ms speed at 33 ms ticks.
+            if (_value == -1)
+            {
+                _phase = (_phase + 0.093f) % (float)(Math.PI * 2.0);
+            }
+
+            // Advance the flow clock. It is a monotonic accumulator of "pixels
+            // travelled"; the per-style renderers apply direction (and, for Sync,
+            // the back-and-forth easing) themselves. Scaling the step by the bar
+            // height keeps the perceived speed constant across DPI. Wrapped at a
+            // large bound so the float never loses precision on a long operation.
+            if (_flow is { } flow)
+            {
+                _flowPhase += flow.Speed * Math.Max(2f, Height * 0.12f);
+                if (_flowPhase > 1_000_000f)
+                {
+                    _flowPhase %= 100_000f;
+                }
+            }
+
+            Invalidate();
         }
 
         protected override void OnResize(EventArgs e) { _trackPath?.Dispose(); _trackPath = null; base.OnResize(e); Invalidate(); }
@@ -1758,10 +1887,32 @@ internal sealed class GlassDialog : Form
             Invalidate();
         }
 
+        // Live change of the directional flow (e.g. an operation moving from
+        // compressing to uploading). Starts or stops the ticker as needed.
+        public void SetActivity(GlassProgressActivity activity)
+        {
+            if (activity == _activity)
+            {
+                return;
+            }
+
+            _activity = activity;
+            _flow = FlowFor(activity);
+            EnsureTicker();
+            Invalidate();
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             SetQuality(g);
+
+            // Match the dialog's gradient behind the rounded track so the bar blends
+            // in seamlessly instead of sitting on a flat-coloured box. The gradient
+            // brush is cached (it only depends on the bar's fixed size/position), so
+            // an animating bar doesn't reallocate it every frame.
+            PaintCachedBackground(g);
+
             var rect = new Rectangle(0, 0, Width - 1, Height - 1);
             var r = Height / 2;
 
@@ -1774,18 +1925,23 @@ internal sealed class GlassDialog : Form
 
             g.FillPath(_trackBgBrush, _trackPath);
 
+            // The "lit" region the fill and any flow stripes occupy — the moving
+            // chunk for an indeterminate bar, or the value-proportional fill for a
+            // determinate one.
+            Rectangle litRect;
+
             if (_value == -1)
             {
                 // Indeterminate: a soft chunk eases left↔right via a sine of _phase.
                 var t = (float)((1.0 + Math.Sin(_phase - (Math.PI / 2.0))) / 2.0);
                 var fw = Math.Max(Height * 2, Width / 3);
                 var fx = (int)(t * (Width - fw));
-                var fRect = new Rectangle(fx, 0, fw, Height - 1);
-                if (fRect.Width > 0)
+                litRect = new Rectangle(fx, 0, fw, Height - 1);
+                if (litRect.Width > 0)
                 {
-                    using var fp = RoundRect(fRect, r);
+                    using var fp = RoundRect(litRect, r);
                     using var fb = new LinearGradientBrush(
-                        new Rectangle(fRect.X, fRect.Y, Math.Max(1, fRect.Width), Math.Max(1, fRect.Height)),
+                        new Rectangle(litRect.X, litRect.Y, Math.Max(1, litRect.Width), Math.Max(1, litRect.Height)),
                         Color.FromArgb(80, _theme.AccentColor), _theme.AccentColor, LinearGradientMode.Horizontal);
                     fb.SetBlendTriangularShape(0.5f, 1.0f);
                     g.SetClip(_trackPath);
@@ -1798,11 +1954,11 @@ internal sealed class GlassDialog : Form
                 // Determinate: fill proportional to value/max, never shorter than a
                 // full pill cap so the rounded ends always render.
                 var fw = Math.Max(r * 2, (int)((float)_value / _max * (Width - 1)));
-                var fRect = new Rectangle(0, 0, fw, Height - 1);
-                if (fRect.Width > 0)
+                litRect = new Rectangle(0, 0, fw, Height - 1);
+                if (litRect.Width > 0)
                 {
-                    using var fp = RoundRect(fRect, r);
-                    using var fb = new LinearGradientBrush(fRect, _theme.AccentColor, _theme.BorderColor, 0f);
+                    using var fp = RoundRect(litRect, r);
+                    using var fb = new LinearGradientBrush(litRect, _theme.AccentColor, _theme.BorderColor, 0f);
                     g.SetClip(_trackPath);
                     g.FillPath(fb, fp);
                     if (fw > 4)
@@ -1818,14 +1974,230 @@ internal sealed class GlassDialog : Form
                 }
             }
 
-            using var pen = new Pen(Color.FromArgb(70, _theme.BorderColor), 1f);
-            g.DrawPath(pen, _trackPath);
+            // Activity flow: the per-style animation, drawn over the lit region only
+            // and clipped to its rounded shape so it reads as motion within the fill.
+            if (_flow is { } flow && litRect.Width > 0)
+            {
+                using var clip = RoundRect(litRect, r);
+                g.SetClip(clip);
+                DrawFlow(g, litRect, flow, _flowPhase);
+                g.ResetClip();
+            }
+
+            g.DrawPath(_trackBorderPen, _trackPath);
+        }
+
+        // Paints the slice of the dialog's full-height gradient that sits behind the
+        // bar, mirroring PaintThemedBackground but caching the brush so a 30 fps
+        // animation doesn't allocate one per frame. Rebuilt only if the bar's size or
+        // vertical position changes (e.g. a DPI rebuild).
+        private void PaintCachedBackground(Graphics g)
+        {
+            var ph = Parent?.Height ?? Height;
+            if (ph < 1)
+            {
+                ph = 1;
+            }
+
+            var rect = new Rectangle(0, -Top, Math.Max(1, Width), ph);
+            if (_bgBrush == null || _bgKey != rect)
+            {
+                _bgBrush?.Dispose();
+                _bgBrush = new LinearGradientBrush(rect, _theme.BackgroundTop, _theme.BackgroundBottom, LinearGradientMode.Vertical);
+                _bgKey = rect;
+            }
+
+            g.FillRectangle(_bgBrush, ClientRectangle);
+        }
+
+        // Dispatches to the renderer for the activity's visual family.
+        private void DrawFlow(Graphics g, Rectangle area, FlowSpec flow, float phase)
+        {
+            switch (flow.Style)
+            {
+                case FlowStyle.Chevrons: DrawChevrons(g, area, flow.Direction, phase); break;
+                case FlowStyle.Packets: DrawPackets(g, area, flow.Direction, phase); break;
+                case FlowStyle.Comet: DrawComet(g, area, flow.Direction, phase); break;
+                case FlowStyle.Pulse: DrawPulse(g, area, phase); break;
+                case FlowStyle.Wave: DrawWave(g, area, flow.Direction, phase); break;
+                case FlowStyle.Segments: DrawSegments(g, area, flow.Direction, phase); break;
+            }
+        }
+
+        // Chevrons — translucent diagonal bands marching along the bar. The slant is
+        // one band tall, giving a ~45° stripe regardless of DPI.
+        private void DrawChevrons(Graphics g, Rectangle area, int dir, float phase)
+        {
+            var height = area.Height + 1;
+            var period = Math.Max(8, (int)(height * 1.8f));
+            var bandW = period / 2f;
+            float slant = height;
+            var offset = (phase * dir) % period;
+            for (float x = area.Left - period - slant + offset; x < area.Right + period; x += period)
+            {
+                _chevronPts[0] = new PointF(x, area.Bottom);
+                _chevronPts[1] = new PointF(x + bandW, area.Bottom);
+                _chevronPts[2] = new PointF(x + bandW + slant, area.Top);
+                _chevronPts[3] = new PointF(x + slant, area.Top);
+                g.FillPolygon(_stripeBrush, _chevronPts);
+            }
+        }
+
+        // Packets — evenly spaced glowing dots gliding along the centre line, so the
+        // bar reads as discrete data crossing a link. The soft radial dot is rendered
+        // once into a cached sprite and blitted each frame, so an animating bar does
+        // no per-frame GDI+ allocation.
+        private void DrawPackets(Graphics g, Rectangle area, int dir, float phase)
+        {
+            var height = area.Height + 1;
+            var spacing = Math.Max(8, (int)(height * 2.2f));
+            var sprite = GetPacketSprite(height);
+            var radius = sprite.Width / 2f;
+            var cy = area.Top + (area.Height / 2f);
+            var travel = (phase * dir) % spacing;
+            var d = sprite.Width;
+            for (float cx = area.Left - spacing + travel; cx < area.Right + spacing; cx += spacing)
+            {
+                // Pin the destination size so the sprite is never rescaled by the
+                // bitmap-vs-graphics DPI ratio on high-DPI screens.
+                g.DrawImage(sprite, cx - radius, cy - radius, d, d);
+            }
+        }
+
+        // Builds (and caches) the glow-dot sprite for the current bar height.
+        private Bitmap GetPacketSprite(int height)
+        {
+            if (_packetSprite != null && _packetSpriteH == height)
+            {
+                return _packetSprite;
+            }
+
+            _packetSprite?.Dispose();
+            _packetSpriteH = height;
+            var radius = Math.Max(2f, height * 0.36f);
+            var d = (int)Math.Ceiling(radius * 2) + 2;
+            var bmp = new Bitmap(d, d);   // 32bpp ARGB by default
+            using (var sg = Graphics.FromImage(bmp))
+            {
+                sg.SmoothingMode = SmoothingMode.AntiAlias;
+                using var gp = new GraphicsPath();
+                gp.AddEllipse(1, 1, d - 2, d - 2);
+                using var glow = new PathGradientBrush(gp)
+                {
+                    CenterColor = Color.FromArgb(235, 255, 255, 255),
+                    SurroundColors = [Color.FromArgb(0, 255, 255, 255)],
+                    // Hold the bright core out to ~45% of the radius before it fades,
+                    // so each packet reads as a solid dot with a soft halo rather than
+                    // a faint smudge.
+                    FocusScales = new PointF(0.45f, 0.45f),
+                };
+                sg.FillPath(glow, gp);
+            }
+
+            _packetSprite = bmp;
+            return bmp;
+        }
+
+        // Comet — a single soft shine band (transparent→bright→transparent) sweeping
+        // across the fill on a loop, like a skeleton-loading shimmer.
+        private void DrawComet(Graphics g, Rectangle area, int dir, float phase)
+        {
+            var height = area.Height + 1;
+            var bandW = Math.Max(height * 4f, area.Width * 0.35f);
+            var cycle = area.Width + bandW;
+            var p = phase % cycle;
+            if (dir < 0)
+            {
+                p = cycle - p;   // sweep the other way for incoming work
+            }
+
+            var x = area.Left - bandW + p;
+            var bandRect = new RectangleF(x, area.Top, bandW, height);
+            using var shine = new LinearGradientBrush(
+                new RectangleF(x - 1, area.Top, bandW + 2, height),
+                Color.FromArgb(0, 255, 255, 255), Color.FromArgb(200, 255, 255, 255),
+                LinearGradientMode.Horizontal);
+            shine.SetBlendTriangularShape(0.5f, 1.0f);   // peak brightness in the middle
+            g.FillRectangle(shine, bandRect);
+        }
+
+        // Pulse — the whole fill breathes: a translucent white wash whose opacity
+        // eases up and down on a sine, giving a "working / securing" heartbeat.
+        private void DrawPulse(Graphics g, Rectangle area, float phase)
+        {
+            var t = phase / Math.Max(1f, area.Height + 1);
+            var a = (float)((1.0 + Math.Sin(t)) / 2.0);   // 0..1
+            // Gentle glow rather than a whiteout, so the fill keeps its accent colour
+            // while it breathes.
+            var alpha = (int)(15 + (a * 95));
+            _dynBrush.Color = Color.FromArgb(alpha, 255, 255, 255);
+            g.FillRectangle(_dynBrush, area);
+        }
+
+        // Wave — a sinusoidal brightness ripple travelling along the bar. For a
+        // two-way activity (Sync, direction 0) the ripple sloshes back and forth
+        // instead of travelling, conveying a reconcile rather than a one-way move.
+        private void DrawWave(Graphics g, Rectangle area, int dir, float phase)
+        {
+            var height = area.Height + 1;
+            var wavelength = Math.Max(6f, height * 2.6f);
+            // Travelling offset, or a back-and-forth slosh when direction is 0.
+            var offset = dir != 0
+                ? phase * dir
+                : (float)Math.Sin(phase / (height * 3f)) * area.Width * 0.5f;
+            var step = Math.Max(2, (int)(height * 0.5f));
+            for (var x = area.Left; x < area.Right; x += step)
+            {
+                var ph = (x - offset) / wavelength * (float)(Math.PI * 2.0);
+                var b = (float)((1.0 + Math.Sin(ph)) / 2.0);
+                var alpha = (int)(b * b * 165);   // squared → crisper crests
+                if (alpha <= 2)
+                {
+                    continue;
+                }
+
+                // Reuse one brush across all columns — mutating its colour avoids
+                // allocating dozens of SolidBrushes per frame at 30 fps.
+                _dynBrush.Color = Color.FromArgb(alpha, 255, 255, 255);
+                g.FillRectangle(_dynBrush, x, area.Top, step, height);
+            }
+        }
+
+        // Segments — rounded translucent blocks marching along, evoking chunks/files
+        // being packed or unpacked. One block path is built per frame and slid into
+        // place for each block via the graphics transform, so the per-block cost is
+        // a cheap translate rather than a fresh GraphicsPath allocation.
+        private void DrawSegments(Graphics g, Rectangle area, int dir, float phase)
+        {
+            var height = area.Height + 1;
+            var segW = Math.Max(4f, height * 1.5f);
+            var gap = Math.Max(2f, height * 0.8f);
+            var period = segW + gap;
+            var radius = Math.Max(1, (int)(height * 0.3f));
+            var travel = (phase * dir) % period;
+            using var path = RoundRect(new Rectangle(0, 0, (int)Math.Ceiling(segW), height), radius);
+            for (float x = area.Left - period + travel; x < area.Right + period; x += period)
+            {
+                g.TranslateTransform(x, area.Top);
+                g.FillPath(_stripeBrush, path);
+                g.TranslateTransform(-x, -area.Top);
+            }
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
-            { _ticker?.Stop(); _ticker?.Dispose(); _trackPath?.Dispose(); _trackBgBrush?.Dispose(); }
+            {
+                _ticker?.Stop();
+                _ticker?.Dispose();
+                _trackPath?.Dispose();
+                _trackBgBrush?.Dispose();
+                _stripeBrush?.Dispose();
+                _dynBrush?.Dispose();
+                _packetSprite?.Dispose();
+                _trackBorderPen?.Dispose();
+                _bgBrush?.Dispose();
+            }
             base.Dispose(disposing);
         }
     }

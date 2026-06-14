@@ -2,7 +2,7 @@
 
 **The modern `MessageBox` replacement for .NET WinForms — Windows 11 ready, zero migration cost.**
 
-Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API · async/await dialogs · inline text & password inputs · live progress bars · toast notifications · per-monitor DPI · full RTL support.
+Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API · async/await dialogs · inline text & password inputs · activity-aware live progress bars · toast notifications · per-monitor DPI · full RTL support.
 
 [![NuGet](https://img.shields.io/nuget/v/Glass.Message?color=0078D6&logo=nuget)](https://www.nuget.org/packages/Glass.Message)
 [![Downloads](https://img.shields.io/nuget/dt/Glass.Message?color=3da639)](https://www.nuget.org/packages/Glass.Message)
@@ -54,6 +54,7 @@ dotnet add package Glass.Message
 | Inline text / password input | ✗ | ✓ |
 | Inline drop-down input | ✗ | ✓ |
 | Live progress bar | ✗ | ✓ determinate + marquee |
+| Activity-aware progress animation | ✗ | ✓ upload / download / sync / compress / … |
 | Checkbox ("don't show again") | ✗ | ✓ |
 | Expandable detail panel | ✗ | ✓ |
 | Toast notifications | ✗ | ✓ 6 positions, multi-monitor |
@@ -138,12 +139,15 @@ var result = await GlassMessage.Create("Confirm deployment to production?")
     .ShowAsync(cts.Token);
 ```
 
-### Live progress dialog
+### Live progress dialog (activity-aware)
+
+The bar can animate to match the operation — `Upload`, `Download`, `Sync`, `Compress`, and more — and you can switch the activity live as the work moves between phases:
 
 ```csharp
 var ctrl = GlassMessage.Create("Uploading files to cloud storage…")
     .Title("Upload")
     .Progress(0, 100)
+    .ProgressActivity(GlassProgressActivity.Upload)   // glowing packets flow →
     .Buttons("Cancel")
     .ShowProgress();
 
@@ -180,6 +184,8 @@ await GlassToast.ShowAsync(new GlassToastOptions
 ![Fluent builder API — custom inputs, checkboxes, progress, themes](https://raw.githubusercontent.com/gcfernando/glass/main/Images/Fluent%20Builder%20API.png)
 
 ![Password input dialog with reveal-eye button and Caps Lock hint](https://raw.githubusercontent.com/gcfernando/glass/main/Images/Password%20Input.png)
+
+![Activity-aware progress bar animating a download flow](https://raw.githubusercontent.com/gcfernando/glass/main/Images/Progress%20Activity%20%E2%80%94%20Download%20Flow.png)
 
 ---
 

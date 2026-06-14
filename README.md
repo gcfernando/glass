@@ -94,15 +94,29 @@ GlassMessage.Show(
 
 ---
 
-## 🆕 What's new in v1.0.3
+## 🆕 What's new in v1.0.4
 
 | Area | Change |
 |---|---|
-| **Docs** | Removed an unsubstantiated adoption claim from the NuGet README |
-| **Packaging** | More reliable NuGet version badge and refreshed README badges |
-| **CI** | Release workflow actions bumped to Node 24 (checkout v6, upload v7, download v8, setup-dotnet v5) |
+| **Activity-aware progress** | New `ProgressActivity(...)` + `GlassProgressActivity` enum — the live bar animates to match the operation (upload, download, sync, compress, …) across **6 distinct animation families** |
+| **Live activity changes** | `GlassProgressController.SetActivity(...)` switches the animation mid-flight as work moves between phases |
+| **Visual fix** | Progress bar now blends into the dialog gradient (no more dark "box" around the track) and the animations are high-contrast and clearly distinct |
+| **Performance** | The animated progress panel no longer allocates GDI+ objects per frame — sprite, gradient, pens, and geometry are all cached |
 
-A maintenance release — no library code or API changes. See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.2** feature and fix highlights.
+See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.3** maintenance and **v1.0.2** feature highlights.
+
+```csharp
+// The bar's animation now matches what's actually happening:
+var progress = GlassMessage.Create("Uploading to OneDrive…")
+    .Title("Backup")
+    .Progress(0, 100)
+    .ProgressActivity(GlassProgressActivity.Upload)   // glowing packets flow →
+    .Buttons("Cancel")
+    .ShowProgress();
+
+// …and can change as the operation moves between phases:
+progress.SetActivity(GlassProgressActivity.Sync);     // ripple eases both ways
+```
 
 ---
 
@@ -196,13 +210,14 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 | **Async** | `ShowAsync(...)` on the facade **and** the builder (`ShowAsync()` / `ShowExAsync()`) — non-blocking, awaitable, cancellable |
 | **Rich result** | `ShowEx()` / `ShowExAsync()` return button **+** checkbox state **+** typed input |
 | **Live progress** | `ShowProgress()` → a thread-safe `GlassProgressController` you update while work runs |
+| **Activity-aware progress** | `ProgressActivity(...)` animates the bar to match the operation (upload, download, sync, compress, …) — 6 distinct families, switchable live |
 | **Theming** | `Dark`, `Light`, `Mica`, `HighContrast`, `WindowsClassic` + custom themes |
 | **Auto theme** | `GlassTheme.AutoDetect()` follows the Windows light/dark/HC setting |
 | **Modern chrome** | Windows 11 rounded corners (DWM), Mica backdrop, Acrylic fallback |
 | **Inputs** | Single-line, password (reveal + configurable Caps Lock hint), multi-line, drop-down |
 | **Checkbox** | "Don't show again"-style opt-in under the message |
 | **Detail panel** | Expandable "Show details" for stack traces / diagnostics |
-| **Progress** | Determinate and indeterminate (marquee) bars |
+| **Progress** | Determinate and indeterminate (marquee) bars, with optional activity-matched flow animations |
 | **Countdown** | Auto-confirm the default button with a live circular countdown |
 | **Custom icon** | Any 48×48 `Bitmap` (e.g. a product logo) |
 | **System sounds** | `Sound()` / `GlassMessage.PlaySystemSounds` play the icon's Windows sound on open |
@@ -515,7 +530,7 @@ GlassMessage.Create("OneDrive failed to sync 'Annual_Report_Q4_2025.xlsx'.")
 </details>
 
 <details>
-<summary><b>8 · Progress — determinate &amp; indeterminate</b></summary>
+<summary><b>8 · Progress — determinate, indeterminate &amp; activity-aware</b></summary>
 
 <br/>
 
@@ -538,9 +553,40 @@ GlassMessage.Create("Verifying your Microsoft 365 licence…")
     .ProgressIndeterminate()           // marquee
     .Buttons("Cancel")
     .Show();
+
+GlassMessage.Create("Downloading update package…")
+    .Title("Downloading Update")
+    .Progress(40, 100)
+    .ProgressActivity(GlassProgressActivity.Download)   // backward-flowing "incoming" stripes
+    .Buttons("Cancel")
+    .Show();
 ```
 
-**Methods:** `Progress(value, max = 100)` · `ProgressIndeterminate()`.
+**Methods:** `Progress(value, max = 100)` · `ProgressIndeterminate()` · `ProgressActivity(activity)`.
+
+`ProgressActivity` layers an animated overlay on either bar so it matches the operation in
+progress. Activities are grouped into **visual families**, each with its own distinct
+animation; direction and speed then give every activity its own character (e.g. `Upload`
+and `Download` are the same glowing-packet style flowing opposite ways):
+
+| Family | Animation | Activities |
+|---|---|---|
+| **Packets** | glowing dots glide along the bar | `Upload` (→) · `Download` (←) · `Stream` |
+| **Chevrons** | diagonal barber-pole bands march | `FileTransfer` (→) · `Import` (←) |
+| **Segments** | rounded blocks march (pack/unpack) | `Compress` (→) · `Extract` (←) · `Export` |
+| **Wave** | a sinusoidal brightness ripple | `Backup` (→) · `Restore` (←) · `Sync` (sloshes both ways) |
+| **Pulse** | the fill breathes in and out | `Encrypt` · `Decrypt` · `Connecting` |
+| **Comet** | a soft shine sweeps across | `Install` · `Search` · `Processing` |
+
+<table>
+<tr>
+<td align="center"><b>Download flow (incoming packets)</b><br/><img src="Images/Progress%20Activity%20%E2%80%94%20Download%20Flow.png" width="430" alt="Download activity flow"/></td>
+<td align="center"><b>Activity gallery — every family</b><br/><img src="Images/Progress%20Activity%20%E2%80%94%20Gallery%20%28all%20styles%29.png" width="430" alt="Activity gallery"/></td>
+</tr>
+</table>
+
+Use `None` for a plain bar. Change the activity live from the controller via `SetActivity(...)`
+as an operation moves between phases (e.g. `Compress` → `Upload`).
 
 </details>
 
@@ -831,18 +877,20 @@ if (r.Button == DialogResult.OK)
 
 <img src="Images/Live%20Progress%20Controller.png" width="460" alt="Live progress controller"/>
 
-`ShowProgress()` opens a **non-blocking** progress dialog and hands back a thread-safe `GlassProgressController`. Drive the bar and caption from a worker, then `Complete()` it — or detect a user cancel via `WasCanceledByUser`.
+`ShowProgress()` opens a **non-blocking** progress dialog and hands back a thread-safe `GlassProgressController`. Drive the bar and caption from a worker, then `Complete()` it — or detect a user cancel via `WasCanceledByUser`. Pair it with `ProgressActivity(...)` (see **§8 · Progress**) and `SetActivity(...)` so the bar's animation matches the work — and switches as it moves between phases.
 
 ```csharp
 var progress = GlassMessage.Create("Preparing backup…")
     .Title("OneDrive Backup")
     .Icon(MessageBoxIcon.Information)
     .Progress(0, 100)
+    .ProgressActivity(GlassProgressActivity.Compress)   // packing files: marching blocks
     .Buttons("Cancel")
     .ShowProgress();
 
 for (var i = 0; i <= 100 && !progress.WasCanceledByUser; i += 5)
 {
+    if (i == 50) progress.SetActivity(GlassProgressActivity.Upload);  // now sending: packets flow →
     progress.SetValue(i);
     progress.SetMessage($"Backing up…  {i}%");
     await Task.Delay(80);
@@ -852,7 +900,7 @@ if (!progress.WasCanceledByUser) progress.Complete();
 await progress.Completion;            // completes when the dialog closes
 ```
 
-**Members:** `SetValue(int)` · `SetMessage(string)` · `Complete()` · `Close(DialogResult)` · `Completion` (`Task<GlassResult>`) · `WasCanceledByUser` · `IsClosed`. All update methods marshal onto the UI thread, so they're safe to call from any thread.
+**Members:** `SetValue(int)` · `SetMessage(string)` · `SetActivity(GlassProgressActivity)` · `Complete()` · `Close(DialogResult)` · `Completion` (`Task<GlassResult>`) · `WasCanceledByUser` · `IsClosed`. All update methods marshal onto the UI thread, so they're safe to call from any thread.
 
 </details>
 
@@ -892,7 +940,7 @@ GlassMessage.PlaySystemSounds = true;
 - **Each `Demo_*` method** is self-contained and demonstrates exactly one capability with realistic copy.
 
 <details>
-<summary><b>Full demo → feature map (30 demos)</b></summary>
+<summary><b>Full demo → feature map (32 demos)</b></summary>
 
 <br/>
 
@@ -925,7 +973,9 @@ GlassMessage.PlaySystemSounds = true;
 | Toast — Four Corners | `Demo_ToastCorners` | `ToastPosition` |
 | Async ShowAsync | `Demo_Async` | `await GlassMessage.ShowAsync` |
 | Async Builder (ShowExAsync) | `Demo_AsyncBuilder` | builder `ShowExAsync()` |
-| Live Progress Controller | `Demo_ProgressController` | `ShowProgress()` + `GlassProgressController` |
+| Live Progress Controller | `Demo_ProgressController` | `ShowProgress()` + `GlassProgressController` (live `SetActivity`) |
+| Progress Activity — Download Flow | `Demo_ProgressDownload` | `ProgressActivity(Download)` |
+| Progress Activity — Gallery (all styles) | `Demo_ProgressActivityGallery` | every `GlassProgressActivity` family |
 | Icon System Sound | `Demo_Sound` | `Sound()` |
 | All Buttons + ShowEx Rich Result | `Demo_ShowEx` | full `GlassResult` |
 
@@ -990,6 +1040,7 @@ static bool       PlaySystemSounds  { get; set; }  // = false
 | `Detail(string)` | Expandable "Show details" panel |
 | `Progress(int value, int max = 100)` | Determinate progress bar |
 | `ProgressIndeterminate()` | Marquee progress bar |
+| `ProgressActivity(GlassProgressActivity)` | Directional flow animation (Transfer/Upload/Download/Sync/…) |
 | `RightToLeft(bool = true)` | Mirror layout for RTL |
 | `Show()` | Show modally → `DialogResult` |
 | `ShowEx()` | Show modally → `GlassResult` |
@@ -1013,6 +1064,7 @@ string       InputText       { get; }   // typed/selected value (never null)
 // GlassProgressController (from builder.ShowProgress()) — thread-safe, non-blocking
 void               SetValue(int value);          // update the determinate bar
 void               SetMessage(string message);   // update the caption
+void               SetActivity(GlassProgressActivity); // change the flow animation live
 void               Complete();                   // close with DialogResult.OK
 void               Close(DialogResult = OK);      // close with an explicit result
 Task<GlassResult>  Completion        { get; }    // completes when the dialog closes
@@ -1154,7 +1206,8 @@ Glass/
 │   ├── GlassButton.cs            # Themed button control
 │   ├── OsVersion.cs              # True Windows version (RtlGetVersion) for DWM chrome
 │   ├── GlassAnimation.cs         # enum: Fade / SlideDown / Scale / None
-│   └── GlassInputMode.cs         # enum: None / Text / Password / Multiline / Dropdown
+│   ├── GlassInputMode.cs         # enum: None / Text / Password / Multiline / Dropdown
+│   └── GlassProgressActivity.cs  # enum: progress flow activities (Upload / Download / Sync / …)
 ├── Glass.Demo/                   # ── WinForms feature gallery ──
 │   └── Program.cs                # DemoForm + one Demo_* method per feature
 ├── Glass.Message.Tests/          # ── Unit tests ──

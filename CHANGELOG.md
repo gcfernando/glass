@@ -11,6 +11,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > without installing .NET. The notes below become the release description
 > automatically. See the [Releases page](../../releases).
 
+## [1.0.4] - 2026-06-14
+
+A feature release that makes the live progress dialog *activity-aware* — the
+bar can now animate to match the operation it represents (upload, download,
+sync, compress, …) — plus visual-polish and performance fixes for the progress
+bar.
+
+### Added
+
+- **`ProgressActivity(GlassProgressActivity)` builder method** and the new
+  **`GlassProgressActivity`** enum (17 activities). The progress bar paints a
+  distinct, eye-catching animation grouped into six visual families:
+
+  | Family | Animation | Activities |
+  |---|---|---|
+  | **Packets** | glowing dots glide along | `Upload` · `Download` · `Stream` |
+  | **Chevrons** | diagonal bands march | `FileTransfer` · `Import` |
+  | **Segments** | rounded blocks march | `Compress` · `Extract` · `Export` |
+  | **Wave** | a sinusoidal ripple | `Backup` · `Restore` · `Sync` |
+  | **Pulse** | the fill breathes | `Encrypt` · `Decrypt` · `Connecting` |
+  | **Comet** | a soft shine sweeps | `Install` · `Search` · `Processing` |
+
+  Stripes flow forward for outgoing work, backward for incoming, and ease both
+  ways for a two-way sync. Works on both determinate and indeterminate bars; use
+  `GlassProgressActivity.None` for a plain bar.
+- **`GlassProgressController.SetActivity(GlassProgressActivity)`** — change the
+  flow animation live as an operation moves between phases (e.g. `Compress` then
+  `Upload`).
+
+### Fixed
+
+- **Progress bar "box" artifact** — the progress panel now paints the dialog's
+  themed gradient behind itself (like every other custom control) instead of
+  clearing to a flat colour, so it blends into the window seamlessly rather than
+  showing a dark rectangle around the track.
+- **Progress bar visibility** — boosted the contrast of every activity animation
+  so the styles read clearly at the standard bar height.
+
+### Performance
+
+- **No per-frame allocations in the animated progress panel** — the glow-dot
+  sprite, themed-background gradient, track border pen, flow brushes, and chevron
+  geometry are all cached/reused, so an animating progress dialog no longer
+  churns GDI+ objects at 30 fps.
+
 ## [1.0.3] - 2026-06-13
 
 A maintenance release — documentation, packaging, and CI only. No library code
@@ -179,6 +224,7 @@ First public release. 🎉
 - **Release pipeline** — pushing a `v*` tag builds every target framework, runs
   the tests, and publishes a GitHub Release with notes and downloadable assets.
 
+[1.0.4]: ../../releases/tag/v1.0.4
 [1.0.3]: ../../releases/tag/v1.0.3
 [1.0.2]: ../../releases/tag/v1.0.2
 [1.0.1]: ../../releases/tag/v1.0.1

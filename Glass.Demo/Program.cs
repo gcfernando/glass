@@ -34,7 +34,7 @@ internal sealed class DemoForm : Form
 {
     public DemoForm()
     {
-        Text = "Glass.Message v1.0.3 — Feature Gallery";
+        Text = "Glass.Message v1.0.4 — Feature Gallery";
         ClientSize = new Size(680, 760);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(18, 26, 46);
@@ -71,7 +71,7 @@ internal sealed class DemoForm : Form
             ("RTL (Right-to-Left) Layout",                Demo_RTL),
             ("Security Alert — Sign-in",                  Demo_SecurityAlert),
             ("Windows Update — Release Notes",            Demo_ReleaseNotes),
-            ("End-User Licence Agreement",               Demo_Eula),
+            ("End-User Licence Agreement",                Demo_Eula),
             ("Storage Migration Wizard",                  Demo_Migration),
             ("Toast — Bottom-Right",                      Demo_Toast),
             ("Toast — Stacking",                          Demo_ToastStack),
@@ -79,6 +79,8 @@ internal sealed class DemoForm : Form
             ("Async ShowAsync",                           Demo_Async),
             ("Async Builder (ShowExAsync)",               Demo_AsyncBuilder),
             ("Live Progress Controller",                  Demo_ProgressController),
+            ("Progress Activity — Download Flow",         Demo_ProgressDownload),
+            ("Progress Activity — Gallery (all styles)",  Demo_ProgressActivityGallery),
             ("Icon System Sound",                         Demo_Sound),
             ("All Buttons + ShowEx Rich Result",          Demo_ShowEx),
         };
@@ -652,6 +654,7 @@ internal sealed class DemoForm : Form
             .Title("OneDrive Backup")
             .Icon(MessageBoxIcon.Information)
             .Progress(0, 100)
+            .ProgressActivity(GlassProgressActivity.FileTransfer)
             .Buttons("Cancel")
             .ShowProgress();
 
@@ -662,8 +665,16 @@ internal sealed class DemoForm : Form
                 break;
             }
 
+            // Halfway through, the operation moves from staging files locally to
+            // sending them to the cloud — the bar's flow switches to match.
+            if (i == 52)
+            {
+                progress.SetActivity(GlassProgressActivity.Upload);
+            }
+
             progress.SetValue(i);
-            progress.SetMessage($"Backing up Documents…  {i}%  ·  {i * 51} of 5,120 files");
+            var phase = i < 52 ? "Compressing Documents" : "Uploading to OneDrive";
+            progress.SetMessage($"{phase}…  {i}%  ·  {i * 51} of 5,120 files");
             await Task.Delay(90);
         }
 
@@ -680,6 +691,82 @@ internal sealed class DemoForm : Form
                 : "Backup complete — 5,120 files (2.1 GB) copied to OneDrive.",
             "OneDrive Backup",
             progress.WasCanceledByUser ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+    }
+
+    // Drives a determinate bar with the Download activity, whose stripes flow
+    // backward (incoming) to convey data arriving from a server.
+    private static async void Demo_ProgressDownload()
+    {
+        var progress = GlassMessage.Create("Connecting to update server…")
+            .Title("Downloading Update")
+            .Icon(MessageBoxIcon.Information)
+            .Progress(0, 100)
+            .ProgressActivity(GlassProgressActivity.Download)
+            .Buttons("Cancel")
+            .ShowProgress();
+
+        for (var i = 0; i <= 100; i += 3)
+        {
+            if (progress.WasCanceledByUser)
+            {
+                break;
+            }
+
+            progress.SetValue(i);
+            progress.SetMessage($"Downloading update package…  {i}%  ·  {i * 0.74:0.0} of 74.0 MB");
+            await Task.Delay(80);
+        }
+
+        if (!progress.WasCanceledByUser)
+        {
+            progress.Complete();
+        }
+
+        _ = await progress.Completion;
+
+        _ = GlassMessage.Show(
+            progress.WasCanceledByUser
+                ? "Download cancelled."
+                : "Update downloaded — 74.0 MB. Restart to install.",
+            "Downloading Update",
+            progress.WasCanceledByUser ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+    }
+
+    // Holds a determinate bar at a wide fill and cycles through one activity from
+    // each visual family every couple of seconds, so the distinct animations can be
+    // compared back-to-back on the same bar.
+    private static async void Demo_ProgressActivityGallery()
+    {
+        var stages = new (GlassProgressActivity Activity, string Caption)[]
+        {
+            (GlassProgressActivity.Upload,       "Packets — glowing dots glide →  (Upload)"),
+            (GlassProgressActivity.Download,     "Packets — glowing dots glide ←  (Download)"),
+            (GlassProgressActivity.FileTransfer, "Chevrons — diagonal bands march  (File Transfer)"),
+            (GlassProgressActivity.Compress,     "Segments — rounded blocks march  (Compress)"),
+            (GlassProgressActivity.Sync,         "Wave — a ripple sloshes both ways  (Sync)"),
+            (GlassProgressActivity.Encrypt,      "Pulse — the whole fill breathes  (Encrypt)"),
+            (GlassProgressActivity.Search,       "Comet — a shine sweeps across  (Search)"),
+        };
+
+        var progress = GlassMessage.Create(stages[0].Caption)
+            .Title("Progress Activity Gallery")
+            .Icon(MessageBoxIcon.Information)
+            .Progress(82, 100)
+            .ProgressActivity(stages[0].Activity)
+            .Buttons("Close")
+            .ShowProgress();
+
+        var i = 0;
+        while (!progress.WasCanceledByUser)
+        {
+            var (activity, caption) = stages[i % stages.Length];
+            progress.SetActivity(activity);
+            progress.SetMessage(caption);
+            i++;
+            await Task.Delay(2_400);
+        }
+
+        _ = await progress.Completion;
     }
 
     // Plays the Windows system sound that matches each icon as the dialog opens.

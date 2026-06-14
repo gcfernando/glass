@@ -56,6 +56,14 @@ public sealed class GlassProgressController
     /// <summary>Replaces the dialog's message text — handy for status lines like "Copying file 3 of 10".</summary>
     public void SetMessage(string message) => Marshal(() => _dialog.SetMessageText(message));
 
+    /// <summary>
+    /// Changes the directional flow animation on the bar — useful when an operation
+    /// moves between phases (e.g. <see cref="GlassProgressActivity.FileTransfer"/>
+    /// while compressing, then <see cref="GlassProgressActivity.Upload"/> while
+    /// sending). No-op if the dialog has no progress bar.
+    /// </summary>
+    public void SetActivity(GlassProgressActivity activity) => Marshal(() => _dialog.SetProgressActivity(activity));
+
     /// <summary>Closes the dialog, reporting <see cref="DialogResult.OK"/> to <see cref="Completion"/>.</summary>
     public void Complete()
     {

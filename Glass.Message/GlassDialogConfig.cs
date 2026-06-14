@@ -62,6 +62,13 @@ internal sealed class GlassDialogConfig
     internal int ProgressValue { get; set; } = -1;
     internal int ProgressMax { get; set; } = 100;
 
+    /// <summary>
+    /// The real-world operation the bar represents, which selects the directional
+    /// flow animation painted over the bar. Defaults to <see cref="GlassProgressActivity.None"/>
+    /// (a plain bar).
+    /// </summary>
+    internal GlassProgressActivity ProgressActivity { get; set; } = GlassProgressActivity.None;
+
     internal bool RightToLeft { get; set; }
 
     /// <summary>

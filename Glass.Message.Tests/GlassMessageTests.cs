@@ -145,6 +145,7 @@ public class GlassBuilderTests
             .InputText("placeholder", "default")
             .Detail("stack trace here")
             .Progress(50, 100)
+            .ProgressActivity(GlassProgressActivity.FileTransfer)
             .RightToLeft(false)
             .RoundedCorners(true);
         Assert.NotNull(b);
@@ -275,6 +276,20 @@ public class GlassDialogConfigTests
     [Fact]
     public void HasProgress_True_When_Enabled() =>
         Assert.True(new GlassDialogConfig { ShowProgress = true }.HasProgress);
+
+    [Fact]
+    public void ProgressActivity_Defaults_To_None() =>
+        Assert.Equal(GlassProgressActivity.None, new GlassDialogConfig().ProgressActivity);
+
+    [Fact]
+    public void ProgressActivity_Can_Be_Set() =>
+        Assert.Equal(
+            GlassProgressActivity.Upload,
+            new GlassDialogConfig { ProgressActivity = GlassProgressActivity.Upload }.ProgressActivity);
+
+    [Fact]
+    public void Builder_ProgressActivity_Returns_Builder() =>
+        Assert.NotNull(GlassMessage.Create("msg").ProgressActivity(GlassProgressActivity.Download));
 
     [Fact]
     public void HasDetail_False_When_Null() =>
