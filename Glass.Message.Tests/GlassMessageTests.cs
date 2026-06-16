@@ -17,7 +17,7 @@ namespace Glass.Message.Tests;
 // All test classes that write to GlassMessage static state are placed in this
 // collection so xUnit serialises them (no two classes mutate globals in parallel).
 [CollectionDefinition("GlassStaticState")]
-public sealed class GlassStaticStateCollection { }
+public sealed class GlassStaticStateCollection;
 
 /// <summary>Verifies the built-in theme presets and the OS theme detection.</summary>
 public class ThemeTests
@@ -489,61 +489,61 @@ public class RoundRectTests
 /// </summary>
 public class CalcToastLocationTests
 {
-    private static readonly Rectangle Screen1080p = new(0, 0, 1920, 1040); // typical working area
+    private static readonly Rectangle _screen1080p = new(0, 0, 1920, 1040); // typical working area
 
     [Fact]
     public void BottomRight_Is_Inside_Screen()
     {
-        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomRight, 0, 12);
-        Assert.True(loc.X >= Screen1080p.Left);
-        Assert.True(loc.Y >= Screen1080p.Top);
-        Assert.True(loc.X + 360 <= Screen1080p.Right + 1);
-        Assert.True(loc.Y + 80 <= Screen1080p.Bottom + 1);
+        var loc = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.BottomRight, 0, 12);
+        Assert.True(loc.X >= _screen1080p.Left);
+        Assert.True(loc.Y >= _screen1080p.Top);
+        Assert.True(loc.X + 360 <= _screen1080p.Right + 1);
+        Assert.True(loc.Y + 80 <= _screen1080p.Bottom + 1);
     }
 
     [Fact]
     public void BottomLeft_X_Is_Near_Left_Edge()
     {
-        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomLeft, 0, 12);
-        Assert.Equal(Screen1080p.Left + 12, loc.X);
+        var loc = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.BottomLeft, 0, 12);
+        Assert.Equal(_screen1080p.Left + 12, loc.X);
     }
 
     [Fact]
     public void TopRight_Y_Is_Near_Top_Edge()
     {
-        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopRight, 0, 12);
-        Assert.Equal(Screen1080p.Top + 12, loc.Y);
+        var loc = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.TopRight, 0, 12);
+        Assert.Equal(_screen1080p.Top + 12, loc.Y);
     }
 
     [Fact]
     public void TopLeft_Is_At_Top_Left_Corner()
     {
-        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopLeft, 0, 12);
-        Assert.Equal(Screen1080p.Left + 12, loc.X);
-        Assert.Equal(Screen1080p.Top + 12, loc.Y);
+        var loc = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.TopLeft, 0, 12);
+        Assert.Equal(_screen1080p.Left + 12, loc.X);
+        Assert.Equal(_screen1080p.Top + 12, loc.Y);
     }
 
     [Fact]
     public void BottomCenter_Is_Horizontally_Centred()
     {
-        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomCenter, 0, 12);
-        var expectedX = Screen1080p.Left + ((Screen1080p.Width - 360) / 2);
+        var loc = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.BottomCenter, 0, 12);
+        var expectedX = _screen1080p.Left + ((_screen1080p.Width - 360) / 2);
         Assert.Equal(expectedX, loc.X);
     }
 
     [Fact]
     public void TopCenter_Is_Horizontally_Centred()
     {
-        var loc = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopCenter, 0, 12);
-        var expectedX = Screen1080p.Left + ((Screen1080p.Width - 360) / 2);
+        var loc = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.TopCenter, 0, 12);
+        var expectedX = _screen1080p.Left + ((_screen1080p.Width - 360) / 2);
         Assert.Equal(expectedX, loc.X);
     }
 
     [Fact]
     public void Stack_Offset_Shifts_BottomRight_Up()
     {
-        var loc0 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomRight, 0, 12);
-        var loc1 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.BottomRight, 92, 12);
+        var loc0 = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.BottomRight, 0, 12);
+        var loc1 = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.BottomRight, 92, 12);
         Assert.True(loc1.Y < loc0.Y);
         Assert.Equal(loc0.Y - 92, loc1.Y);
     }
@@ -551,8 +551,8 @@ public class CalcToastLocationTests
     [Fact]
     public void Stack_Offset_Shifts_TopLeft_Down()
     {
-        var loc0 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopLeft, 0, 12);
-        var loc1 = GlassToast.CalcToastLocation(Screen1080p, 360, 80, ToastPosition.TopLeft, 92, 12);
+        var loc0 = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.TopLeft, 0, 12);
+        var loc1 = GlassToast.CalcToastLocation(_screen1080p, 360, 80, ToastPosition.TopLeft, 92, 12);
         Assert.True(loc1.Y > loc0.Y);
         Assert.Equal(loc0.Y + 92, loc1.Y);
     }
@@ -573,10 +573,7 @@ public class V102RegressionTests
     }
 
     [Fact]
-    public void Dark_Theme_Is_Same_Instance_As_Default()
-    {
-        Assert.Same(GlassTheme.Default, GlassTheme.Dark);
-    }
+    public void Dark_Theme_Is_Same_Instance_As_Default() => Assert.Same(GlassTheme.Default, GlassTheme.Dark);
 
     [Fact]
     public void InputDropdown_Null_Items_Does_Not_Throw()

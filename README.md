@@ -94,19 +94,18 @@ GlassMessage.Show(
 
 ---
 
-## 🆕 What's new in v1.0.4
+## 🆕 What's new in v1.0.5
 
 | Area | Change |
 |---|---|
-| **Activity-aware progress** | New `ProgressActivity(...)` + `GlassProgressActivity` enum — the live bar animates to match the operation (upload, download, sync, compress, …) across **6 distinct animation families** |
-| **Live activity changes** | `GlassProgressController.SetActivity(...)` switches the animation mid-flight as work moves between phases |
-| **Visual fix** | Progress bar now blends into the dialog gradient (no more dark "box" around the track) and the animations are high-contrast and clearly distinct |
-| **Performance** | The animated progress panel no longer allocates GDI+ objects per frame — sprite, gradient, pens, and geometry are all cached |
+| **Smoother live progress** | `GlassProgressController.SetValue(...)` now eases the determinate fill toward the new value instead of snapping — a jump like 10 % → 60 % glides across ~½ second, and the timer retires itself once the bar settles |
+| **Visual fix** | Removed a hairline "background edge" rim along the progress fill (an aliased clip plus a gradient seam); the bar now renders as a clean, solid pill |
+| **Code quality** | Source cleaned up to satisfy the Roslynator analyzer set (conditional access, read-only fields, a static helper, concrete field types) — internal only, no API change |
 
-See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.3** maintenance and **v1.0.2** feature highlights.
+See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.4** activity-aware progress release.
 
 ```csharp
-// The bar's animation now matches what's actually happening:
+// Live progress now glides between values instead of jumping:
 var progress = GlassMessage.Create("Uploading to OneDrive…")
     .Title("Backup")
     .Progress(0, 100)
@@ -114,7 +113,7 @@ var progress = GlassMessage.Create("Uploading to OneDrive…")
     .Buttons("Cancel")
     .ShowProgress();
 
-// …and can change as the operation moves between phases:
+progress.SetValue(60);                                // fill eases up smoothly
 progress.SetActivity(GlassProgressActivity.Sync);     // ripple eases both ways
 ```
 

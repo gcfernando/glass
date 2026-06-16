@@ -93,7 +93,7 @@ internal sealed class GlassDialog : Form
     private bool _closeHover;
 
     // Optional content controls — any of these may be null depending on config.
-    private CheckBox _checkBoxCtrl;
+    private GlassCheckBox _checkBoxCtrl;        // always a GlassCheckBox (concrete type — CA1859)
     private PlaceholderTextBox _inputTextBox;   // always a PlaceholderTextBox (concrete type — CA1859)
     private Rectangle _inputBandRect;     // bounds we paint the input border into
     private ComboBox _inputCombo;
@@ -232,7 +232,9 @@ internal sealed class GlassDialog : Form
             MessageBoxIcon.Information => 0x40u,
             _ => 0x0u,
         };
-        try { _ = MessageBeep(type); } catch { /* sound is a nicety; ignore failures */ }
+        try
+        { _ = MessageBeep(type); }
+        catch { /* sound is a nicety; ignore failures */ }
     }
 
     // Which backdrop/corner treatments actually took effect on this machine.
@@ -386,9 +388,9 @@ internal sealed class GlassDialog : Form
         _slideActive = false;
         _fadingOut = false;
 
-        var savedInputText = _inputTextBox != null && !_inputTextBox.IsDisposed ? _inputTextBox.Text : null;
-        var savedComboText = _inputCombo != null && !_inputCombo.IsDisposed ? _inputCombo.Text : null;
-        var savedChecked = _checkBoxCtrl != null && !_checkBoxCtrl.IsDisposed ? (bool?)_checkBoxCtrl.Checked : null;
+        var savedInputText = _inputTextBox?.IsDisposed == false ? _inputTextBox.Text : null;
+        var savedComboText = _inputCombo?.IsDisposed == false ? _inputCombo.Text : null;
+        var savedChecked = _checkBoxCtrl?.IsDisposed == false ? (bool?)_checkBoxCtrl.Checked : null;
 
         _detailFont?.Dispose();
         _detailFont = null;
@@ -742,7 +744,8 @@ internal sealed class GlassDialog : Form
                         Bounds = new Rectangle(eyeX, y, eyeSize, inputH2),
                     };
                     // Restore the reveal state from before the last Rebuild (e.g. DPI change).
-                    if (_inputRevealed) { eye.Restore(true); }
+                    if (_inputRevealed)
+                    { eye.Restore(true); }
                     _inputTextBox.PasswordChar = _inputRevealed ? '\0' : '●';
                     eye.RevealedChanged += (s, e) =>
                     {
@@ -765,7 +768,7 @@ internal sealed class GlassDialog : Form
                         // and Caps Lock is actually on; keep it refreshed on key-up.
                         void UpdateCaps()
                         {
-                            if (_inputTextBox == null || _inputTextBox.IsDisposed || _capsBadge == null || _capsBadge.IsDisposed)
+                            if (_inputTextBox?.IsDisposed != false || _capsBadge?.IsDisposed != false)
                             {
                                 return;
                             }
@@ -778,7 +781,7 @@ internal sealed class GlassDialog : Form
                             }
                         }
                         _inputTextBox.Enter += (s, e) => UpdateCaps();
-                        _inputTextBox.Leave += (s, e) => { if (_capsBadge != null && !_capsBadge.IsDisposed) { _capsBadge.Visible = false; } };
+                        _inputTextBox.Leave += (s, e) => { if (_capsBadge?.IsDisposed == false) { _capsBadge.Visible = false; } };
                         _inputTextBox.KeyUp += (s, e) => UpdateCaps();
                     }
                 }
@@ -795,12 +798,12 @@ internal sealed class GlassDialog : Form
                 Font = _theme.MessageFont,
                 Checked = _cfg.CheckBoxDefault,
                 AccessibleRole = AccessibleRole.CheckButton,
+                // Size the checkbox explicitly rather than relying on AutoSize: a
+                // runtime Rebuild (e.g. toggling the detail panel) adds controls under
+                // SuspendLayout and ends with ResumeLayout(false), which skips the
+                // layout pass that AutoSize needs — leaving the label truncated.
+                AutoSize = false
             };
-            // Size the checkbox explicitly rather than relying on AutoSize: a
-            // runtime Rebuild (e.g. toggling the detail panel) adds controls under
-            // SuspendLayout and ends with ResumeLayout(false), which skips the
-            // layout pass that AutoSize needs — leaving the label truncated.
-            _checkBoxCtrl.AutoSize = false;
             var checkAvailW = SecondaryAvailW(fw);
             var checkPref = _checkBoxCtrl.GetPreferredSize(Size.Empty);
             var checkW = Math.Min(checkPref.Width, checkAvailW);
@@ -1208,7 +1211,7 @@ internal sealed class GlassDialog : Form
 
     internal void SetMessageText(string message)
     {
-        if (_messageLabel == null || _messageLabel.IsDisposed)
+        if (_messageLabel?.IsDisposed != false)
         {
             return;
         }
@@ -1581,7 +1584,7 @@ internal sealed class GlassDialog : Form
         // lifetime; avoids a GDI+ object allocation on every WM_PAINT.
         var borderPen = _inputBorderPen;
 
-        if (_inputTextBox != null && !_inputTextBox.IsDisposed)
+        if (_inputTextBox?.IsDisposed == false)
         {
             var b = _inputBandRect;
             if (_effectiveRadius > 0)
@@ -1598,7 +1601,7 @@ internal sealed class GlassDialog : Form
             }
         }
 
-        if (_inputCombo != null && !_inputCombo.IsDisposed)
+        if (_inputCombo?.IsDisposed == false)
         {
             var b = _inputCombo.Bounds;
             b.Inflate(1, 1);
@@ -1775,7 +1778,12 @@ internal sealed class GlassDialog : Form
 
         private readonly GlassTheme _theme;
         private int _value;
+        private float _displayValue;   // eased toward _value each tick so determinate updates glide instead of snapping
         private readonly int _max;
+
+        // Per-tick fraction the displayed value moves toward the target (~0.22 at
+        // 30 fps settles a jump in roughly half a second with a smooth ease-out).
+        private const float _valueEaseRate = 0.22f;
         private GlassProgressActivity _activity;
         private FlowSpec? _flow;
         private float _phase;       // marquee animation phase, advanced each tick
@@ -1783,7 +1791,7 @@ internal sealed class GlassDialog : Form
         private System.Windows.Forms.Timer _ticker;
         private GraphicsPath _trackPath;
         private Size _trackSize;
-        private SolidBrush _trackBgBrush;  // cached — same colour for the control's lifetime
+        private readonly SolidBrush _trackBgBrush;  // cached — same colour for the control's lifetime
         private readonly SolidBrush _stripeBrush;  // cached translucent overlay shared by the flow renderers
         private readonly SolidBrush _dynBrush = new(Color.White);  // reused for per-column/per-frame fills; colour mutated in place
         private Bitmap _packetSprite;  // pre-rendered glow dot, rebuilt only when the bar height changes
@@ -1797,6 +1805,7 @@ internal sealed class GlassDialog : Form
         {
             _theme = theme;
             _value = value;
+            _displayValue = value;
             _max = Math.Max(1, max);
             _activity = activity;
             _flow = FlowFor(activity);
@@ -1818,7 +1827,7 @@ internal sealed class GlassDialog : Form
         // the bar is indeterminate or an activity flow is active.
         private void EnsureTicker()
         {
-            var needsTicker = _value == -1 || _flow != null;
+            var needsTicker = _value == -1 || _flow != null || _displayValue != _value;
             if (needsTicker == (_ticker != null))
             {
                 return;
@@ -1842,11 +1851,22 @@ internal sealed class GlassDialog : Form
 
         private void OnTick(object sender, EventArgs e)
         {
+            var dirty = false;
+
             // Marquee chunk phase (only meaningful when indeterminate). Phase step
             // 0.093 ≈ 0.045 × 33/16 keeps the historic 16 ms speed at 33 ms ticks.
             if (_value == -1)
             {
                 _phase = (_phase + 0.093f) % (float)(Math.PI * 2.0);
+                dirty = true;
+            }
+            else if (_displayValue != _value)
+            {
+                // Ease the rendered fill toward the latest value so a jump from, say,
+                // 10 % to 60 % glides rather than snapping in a single frame.
+                var diff = _value - _displayValue;
+                _displayValue = Math.Abs(diff) < 0.5f ? _value : _displayValue + (diff * _valueEaseRate);
+                dirty = true;
             }
 
             // Advance the flow clock. It is a monotonic accumulator of "pixels
@@ -1861,9 +1881,22 @@ internal sealed class GlassDialog : Form
                 {
                     _flowPhase %= 100_000f;
                 }
+
+                dirty = true;
             }
 
-            Invalidate();
+            if (dirty)
+            {
+                Invalidate();
+            }
+
+            // Once a determinate bar has settled and nothing else animates, retire the
+            // ticker so an idle dialog doesn't repaint at 30 fps. Deferred via
+            // BeginInvoke so the timer is never disposed inside its own Tick callback.
+            if (_value != -1 && _flow == null && _displayValue == _value && IsHandleCreated)
+            {
+                _ = BeginInvoke(EnsureTicker);
+            }
         }
 
         protected override void OnResize(EventArgs e) { _trackPath?.Dispose(); _trackPath = null; base.OnResize(e); Invalidate(); }
@@ -1884,6 +1917,9 @@ internal sealed class GlassDialog : Form
             }
 
             _value = clamped;
+            // Spin up the ticker (if not already running) so OnTick can ease the
+            // displayed fill toward the new target instead of snapping to it.
+            EnsureTicker();
             Invalidate();
         }
 
@@ -1952,25 +1988,37 @@ internal sealed class GlassDialog : Form
             else
             {
                 // Determinate: fill proportional to value/max, never shorter than a
-                // full pill cap so the rounded ends always render.
-                var fw = Math.Max(r * 2, (int)((float)_value / _max * (Width - 1)));
+                // full pill cap so the rounded ends always render. Uses the eased
+                // _displayValue so live updates glide.
+                var fw = Math.Max(r * 2, (int)(_displayValue / _max * (Width - 1)));
                 litRect = new Rectangle(0, 0, fw, Height - 1);
                 if (litRect.Width > 0)
                 {
                     using var fp = RoundRect(litRect, r);
-                    using var fb = new LinearGradientBrush(litRect, _theme.AccentColor, _theme.BorderColor, 0f);
-                    g.SetClip(_trackPath);
+                    // Inflate the gradient rect by 1 px so GDI+ never samples the
+                    // wrap-around band right at the edge — that is what leaves a thin
+                    // lighter seam along the fill.
+                    using var fb = new LinearGradientBrush(
+                        Rectangle.Inflate(litRect, 1, 1), _theme.AccentColor, _theme.BorderColor, 0f);
+                    // Fill the rounded fill path directly (antialiased) rather than
+                    // clipping to the track region first: a region clip is *aliased*,
+                    // and its hard, stair-stepped edge exposes a 1 px rim of the lighter
+                    // track behind the bar — the "white background edge". fp shares the
+                    // track's radius and bounds, so it stays inside the track anyway.
                     g.FillPath(fb, fp);
                     if (fw > 4)
                     {
                         var sh = Math.Max(1, (Height - 1) / 2);
                         using var shine = new LinearGradientBrush(
-                            new Rectangle(0, 0, Math.Max(1, fw), Math.Max(1, sh)),
+                            new Rectangle(0, -1, Math.Max(1, fw), Math.Max(1, sh) + 1),
                             Color.FromArgb(70, 255, 255, 255), Color.FromArgb(0, 255, 255, 255),
                             LinearGradientMode.Vertical);
+                        // Clip the highlight to the fill's own rounded shape so it
+                        // doesn't spill white nubs past the rounded top corners.
+                        g.SetClip(fp);
                         g.FillRectangle(shine, 0, 0, fw, sh);
+                        g.ResetClip();
                     }
-                    g.ResetClip();
                 }
             }
 
@@ -2015,12 +2063,24 @@ internal sealed class GlassDialog : Form
         {
             switch (flow.Style)
             {
-                case FlowStyle.Chevrons: DrawChevrons(g, area, flow.Direction, phase); break;
-                case FlowStyle.Packets: DrawPackets(g, area, flow.Direction, phase); break;
-                case FlowStyle.Comet: DrawComet(g, area, flow.Direction, phase); break;
-                case FlowStyle.Pulse: DrawPulse(g, area, phase); break;
-                case FlowStyle.Wave: DrawWave(g, area, flow.Direction, phase); break;
-                case FlowStyle.Segments: DrawSegments(g, area, flow.Direction, phase); break;
+                case FlowStyle.Chevrons:
+                    DrawChevrons(g, area, flow.Direction, phase);
+                    break;
+                case FlowStyle.Packets:
+                    DrawPackets(g, area, flow.Direction, phase);
+                    break;
+                case FlowStyle.Comet:
+                    DrawComet(g, area, flow.Direction, phase);
+                    break;
+                case FlowStyle.Pulse:
+                    DrawPulse(g, area, phase);
+                    break;
+                case FlowStyle.Wave:
+                    DrawWave(g, area, flow.Direction, phase);
+                    break;
+                case FlowStyle.Segments:
+                    DrawSegments(g, area, flow.Direction, phase);
+                    break;
             }
         }
 
@@ -2032,8 +2092,8 @@ internal sealed class GlassDialog : Form
             var period = Math.Max(8, (int)(height * 1.8f));
             var bandW = period / 2f;
             float slant = height;
-            var offset = (phase * dir) % period;
-            for (float x = area.Left - period - slant + offset; x < area.Right + period; x += period)
+            var offset = phase * dir % period;
+            for (var x = area.Left - period - slant + offset; x < area.Right + period; x += period)
             {
                 _chevronPts[0] = new PointF(x, area.Bottom);
                 _chevronPts[1] = new PointF(x + bandW, area.Bottom);
@@ -2054,9 +2114,9 @@ internal sealed class GlassDialog : Form
             var sprite = GetPacketSprite(height);
             var radius = sprite.Width / 2f;
             var cy = area.Top + (area.Height / 2f);
-            var travel = (phase * dir) % spacing;
+            var travel = phase * dir % spacing;
             var d = sprite.Width;
-            for (float cx = area.Left - spacing + travel; cx < area.Right + spacing; cx += spacing)
+            for (var cx = area.Left - spacing + travel; cx < area.Right + spacing; cx += spacing)
             {
                 // Pin the destination size so the sprite is never rescaled by the
                 // bitmap-vs-graphics DPI ratio on high-DPI screens.
@@ -2100,7 +2160,7 @@ internal sealed class GlassDialog : Form
 
         // Comet — a single soft shine band (transparent→bright→transparent) sweeping
         // across the fill on a loop, like a skeleton-loading shimmer.
-        private void DrawComet(Graphics g, Rectangle area, int dir, float phase)
+        private static void DrawComet(Graphics g, Rectangle area, int dir, float phase)
         {
             var height = area.Height + 1;
             var bandW = Math.Max(height * 4f, area.Width * 0.35f);
@@ -2174,9 +2234,9 @@ internal sealed class GlassDialog : Form
             var gap = Math.Max(2f, height * 0.8f);
             var period = segW + gap;
             var radius = Math.Max(1, (int)(height * 0.3f));
-            var travel = (phase * dir) % period;
+            var travel = phase * dir % period;
             using var path = RoundRect(new Rectangle(0, 0, (int)Math.Ceiling(segW), height), radius);
-            for (float x = area.Left - period + travel; x < area.Right + period; x += period)
+            for (var x = area.Left - period + travel; x < area.Right + period; x += period)
             {
                 g.TranslateTransform(x, area.Top);
                 g.FillPath(_stripeBrush, path);
@@ -2406,7 +2466,11 @@ internal sealed class GlassDialog : Form
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) _bgBrush?.Dispose();
+            if (disposing)
+            {
+                _bgBrush?.Dispose();
+            }
+
             base.Dispose(disposing);
         }
     }
@@ -2500,7 +2564,11 @@ internal sealed class GlassDialog : Form
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) _exFont?.Dispose();
+            if (disposing)
+            {
+                _exFont?.Dispose();
+            }
+
             base.Dispose(disposing);
         }
     }

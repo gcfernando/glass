@@ -11,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Drawing.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -132,7 +131,8 @@ public static class GlassToast
         }
         catch
         {
-            lock (_lock) { _ = _active.Remove(form); }
+            lock (_lock)
+            { _ = _active.Remove(form); }
             throw;
         }
     }
@@ -186,7 +186,8 @@ public static class GlassToast
         }
         catch
         {
-            lock (_lock) { _ = _active.Remove(form); }
+            lock (_lock)
+            { _ = _active.Remove(form); }
             throw;
         }
 
@@ -263,12 +264,7 @@ public static class GlassToast
         try
         {
             var active = Form.ActiveForm;
-            if (active != null && active.IsHandleCreated)
-            {
-                return Screen.FromHandle(active.Handle);
-            }
-
-            return Screen.FromPoint(Cursor.Position);
+            return active?.IsHandleCreated == true ? Screen.FromHandle(active.Handle) : Screen.FromPoint(Cursor.Position);
         }
         catch
         {
@@ -349,7 +345,8 @@ public static class GlassToast
             // Use try/finally so a throwing OnClick callback never prevents dismiss.
             Click += (s, e) =>
             {
-                try { opts.OnClick?.Invoke(); }
+                try
+                { opts.OnClick?.Invoke(); }
                 catch { /* OnClick exceptions must never prevent the toast from closing */ }
                 finally { BeginDismiss(); }
             };
@@ -446,7 +443,8 @@ public static class GlassToast
 
         internal void BeginDismiss()
         {
-            if (_fadingOut) { return; }
+            if (_fadingOut)
+            { return; }
             _stayTimer?.Stop();
             _stayTimer?.Dispose();
             _stayTimer = null;

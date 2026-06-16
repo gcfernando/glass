@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > without installing .NET. The notes below become the release description
 > automatically. See the [Releases page](../../releases).
 
+## [1.0.5] - 2026-06-16
+
+A polish and code-quality release. The live progress dialog now animates more
+smoothly, a hairline rendering artifact on the bar is gone, and the source has
+been cleaned up to satisfy the Roslynator analyzer set. No public API changes.
+
+### Fixed
+
+- **Smoother live progress** — calling `GlassProgressController.SetValue(...)` now
+  eases the determinate fill toward the new value instead of snapping to it, so a
+  jump (e.g. 10 % → 60 %) glides across roughly half a second. The animation timer
+  spins up only while the bar is catching up and retires itself once it settles,
+  so an idle dialog still does no per-frame work.
+- **Hairline "background edge" on the progress bar** — the determinate fill was
+  drawn through an *aliased* region clip whose hard edge exposed a 1 px rim of the
+  lighter track behind the bar; the gradient also bled a thin seam at its edge.
+  The fill is now painted as an antialiased rounded path with an inset gradient,
+  so the bar reads as a clean, solid pill with no light fringe.
+
+### Changed
+
+- **Code-quality cleanup (internal only)** — applied the Roslynator style/analyzer
+  fixes across the library and tests: conditional access (`?.`) over null-check
+  ternaries and chains, a read-only backing field, a static helper, concrete
+  field types for owner-drawn controls, and a trimmed empty type body. Behaviour
+  and the public API are unchanged.
+
 ## [1.0.4] - 2026-06-14
 
 A feature release that makes the live progress dialog *activity-aware* — the
@@ -224,6 +251,7 @@ First public release. 🎉
 - **Release pipeline** — pushing a `v*` tag builds every target framework, runs
   the tests, and publishes a GitHub Release with notes and downloadable assets.
 
+[1.0.5]: ../../releases/tag/v1.0.5
 [1.0.4]: ../../releases/tag/v1.0.4
 [1.0.3]: ../../releases/tag/v1.0.3
 [1.0.2]: ../../releases/tag/v1.0.2

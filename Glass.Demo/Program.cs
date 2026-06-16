@@ -34,7 +34,7 @@ internal sealed class DemoForm : Form
 {
     public DemoForm()
     {
-        Text = "Glass.Message v1.0.4 — Feature Gallery";
+        Text = "Glass.Message v1.0.5 — Feature Gallery";
         ClientSize = new Size(680, 760);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(18, 26, 46);
