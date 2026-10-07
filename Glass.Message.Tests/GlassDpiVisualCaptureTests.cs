@@ -25,8 +25,8 @@ namespace Glass.Message.Tests;
 [Collection("GlassStaticState")]
 public class GlassDpiVisualCaptureTests
 {
-    private const string OutDir =
-        @"C:\Users\A534313\.copilot\session-state\c31f7a58-517c-4f0d-bb6e-ead8da14a9cd\files\dpi-renders";
+    private static readonly string OutDir =
+        Path.Combine(Path.GetTempPath(), "Glass.Message.Tests", "dpi-renders");
 
     [DllImport("user32.dll")]
     private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
@@ -126,6 +126,7 @@ public class GlassDpiVisualCaptureTests
         StressHarness.PumpFor(50);
 
         var sizeAfter = dlg.ClientSize;
+        _ = Directory.CreateDirectory(OutDir);
         File.WriteAllText(Path.Combine(OutDir, "direct_rebuild_diagnostic.txt"),
             $"sizeBefore={sizeBefore} sizeAfter={sizeAfter} scaleAfter={scaleField.GetValue(dlg)}");
 

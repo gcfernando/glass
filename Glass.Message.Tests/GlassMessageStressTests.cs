@@ -12,6 +12,7 @@
 // -----------------------------------------------------------------------------
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -412,16 +413,25 @@ public class AsyncCancellationLifecycleTests
     {
         // Simulates "application shutdown / owner destroyed while awaited" — the
         // Disposed safety-net path in ShowModeless must still resolve the task.
+        var existingDialogs = new HashSet<Form>();
+        foreach (Form f in Application.OpenForms)
+        {
+            if (f.GetType().Name == "GlassDialog")
+            {
+                _ = existingDialogs.Add(f);
+            }
+        }
+
         var cfgBuilder = GlassMessage.Create("msg");
         var task = cfgBuilder.ShowExAsync();
         StressHarness.PumpFor(20);
 
-        // Reach the live dialog through Application.OpenForms to dispose it
-        // directly, standing in for an owner form / Application.Exit teardown.
+        // Dispose only the dialog created above, not one from another concurrently
+        // executing test, to exercise the Disposed safety-net path reliably.
         Form live = null;
         foreach (Form f in Application.OpenForms)
         {
-            if (f.GetType().Name == "GlassDialog")
+            if (f.GetType().Name == "GlassDialog" && !existingDialogs.Contains(f))
             {
                 live = f;
                 break;
