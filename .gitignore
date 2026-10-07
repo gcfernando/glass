@@ -1,4 +1,4 @@
-﻿################################################################################
+################################################################################
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
@@ -14,3 +14,4 @@
 /Glass.Message/bin/Release
 /Glass.Message.Tests/bin/Release/net8.0-windows
 /.vs
+/Glass.Message.Tests/bin
