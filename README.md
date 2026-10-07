@@ -94,15 +94,22 @@ GlassMessage.Show(
 
 ---
 
-## 🆕 What's new in v1.0.5
+## 🆕 What's new in v1.0.6
+
+A quality, performance, and concurrency hardening release — no new features,
+no public API changes. All of the fixes below were verified with real
+stress/concurrency tests and live-rendered DPI screenshots, not code review
+alone.
 
 | Area | Change |
 |---|---|
-| **Smoother live progress** | `GlassProgressController.SetValue(...)` now eases the determinate fill toward the new value instead of snapping — a jump like 10 % → 60 % glides across ~½ second, and the timer retires itself once the bar settles |
-| **Visual fix** | Removed a hairline "background edge" rim along the progress fill (an aliased clip plus a gradient seam); the bar now renders as a clean, solid pill |
-| **Code quality** | Source cleaned up to satisfy the Roslynator analyzer set (conditional access, read-only fields, a static helper, concrete field types) — internal only, no API change |
+| **Concurrency** | `GlassProgressController.SetValue`/`SetMessage`/`SetActivity` now coalesce rapid or concurrent calls so at most one UI update per kind is ever queued, instead of flooding the UI thread with one `BeginInvoke` per call under high-frequency updates. Verified with 6 concurrent worker threads plus a live message pump: no deadlock, no hang, no cross-thread exception. |
+| **Async lifecycle** | Verified that cancellation before showing, immediately after showing, while visible/animating, concurrently with a button click, and during owner disposal all reach a terminal task state — no hangs. |
+| **Memory / GDI+** | Toast notifications and the dialog's close-button/countdown-ring pens no longer allocate new paths/brushes/pens on every animation frame or repaint — they're now built once and reused, like `GlassDialog`/`GlassButton` already do. Verified GDI/USER handle counts stay bounded across 300 dialog and 200 toast create/dispose cycles. |
+| **Rendering / DPI** | Verified from actual rendered screenshots that dialogs rescale cleanly with sharp corners, crisp borders, and no artifacts at 100%, 125%, 150%, 175%, and 200% DPI. |
+| **Reliability** | Verified no stale toast entries after 25 simultaneous and 50 rapid-sequential toast show/dismiss cycles, and no corruption when a DPI change fires while progress updates and an open toast are concurrently active. |
 
-See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.4** activity-aware progress release.
+See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.5** progress-animation release and **v1.0.4** activity-aware progress release.
 
 ```csharp
 // Live progress now glides between values instead of jumping:

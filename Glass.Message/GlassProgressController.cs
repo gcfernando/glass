@@ -8,6 +8,7 @@
 // -----------------------------------------------------------------------------
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -25,10 +26,23 @@ public sealed class GlassProgressController
     private readonly GlassDialog _dialog;
     private volatile bool _closedByController;
 
+    // Coalescing dispatchers: no matter how many times (or from how many threads)
+    // SetValue/SetMessage/SetActivity are called between UI-thread pumps, at most
+    // one BeginInvoke per kind is ever outstanding, and the UI always ends up
+    // applying only the latest value. This keeps a worker that calls SetValue in a
+    // tight loop from flooding the message queue with thousands of queued
+    // delegates (unbounded backlog / growing memory / an ever-more-stale UI).
+    private readonly Coalescer<int> _valueCoalescer;
+    private readonly Coalescer<string> _messageCoalescer;
+    private readonly Coalescer<GlassProgressActivity> _activityCoalescer;
+
     internal GlassProgressController(GlassDialog dialog, Task<GlassResult> completion)
     {
         _dialog = dialog;
         Completion = completion;
+        _valueCoalescer = new Coalescer<int>(v => _dialog.SetProgressValue(v), Marshal);
+        _messageCoalescer = new Coalescer<string>(m => _dialog.SetMessageText(m), Marshal);
+        _activityCoalescer = new Coalescer<GlassProgressActivity>(a => _dialog.SetProgressActivity(a), Marshal);
     }
 
     /// <summary>
@@ -50,11 +64,19 @@ public sealed class GlassProgressController
     /// </summary>
     public bool WasCanceledByUser => IsClosed && !_closedByController;
 
-    /// <summary>Updates the determinate progress bar to <paramref name="value"/> (clamped to its range).</summary>
-    public void SetValue(int value) => Marshal(() => _dialog.SetProgressValue(value));
+    /// <summary>
+    /// Updates the determinate progress bar to <paramref name="value"/> (clamped to its
+    /// range). Safe to call at very high frequency from one or many worker threads:
+    /// calls are coalesced, so only the most recent value is ever applied — the UI
+    /// thread is never asked to catch up through a backlog of stale values.
+    /// </summary>
+    public void SetValue(int value) => _valueCoalescer.Post(value);
 
-    /// <summary>Replaces the dialog's message text — handy for status lines like "Copying file 3 of 10".</summary>
-    public void SetMessage(string message) => Marshal(() => _dialog.SetMessageText(message));
+    /// <summary>
+    /// Replaces the dialog's message text — handy for status lines like "Copying file
+    /// 3 of 10". As with <see cref="SetValue"/>, rapid calls are coalesced to the latest message.
+    /// </summary>
+    public void SetMessage(string message) => _messageCoalescer.Post(message ?? string.Empty);
 
     /// <summary>
     /// Changes the directional flow animation on the bar — useful when an operation
@@ -62,7 +84,7 @@ public sealed class GlassProgressController
     /// while compressing, then <see cref="GlassProgressActivity.Upload"/> while
     /// sending). No-op if the dialog has no progress bar.
     /// </summary>
-    public void SetActivity(GlassProgressActivity activity) => Marshal(() => _dialog.SetProgressActivity(activity));
+    public void SetActivity(GlassProgressActivity activity) => _activityCoalescer.Post(activity);
 
     /// <summary>Closes the dialog, reporting <see cref="DialogResult.OK"/> to <see cref="Completion"/>.</summary>
     public void Complete()
@@ -104,5 +126,59 @@ public sealed class GlassProgressController
         }
         catch (ObjectDisposedException) { /* dialog closed between the check and the call */ }
         catch (InvalidOperationException) { /* handle destroyed mid-marshal */ }
+    }
+
+    // Coalesces rapid, same-kind updates from one or many worker threads so that at
+    // most one marshaled callback is ever outstanding, regardless of how many times
+    // Post() is called in between: a burst of calls collapses to "apply the latest
+    // value once". This bounds the amount of queued UI work to O(1) per update kind
+    // instead of O(number of calls), without ever blocking the caller.
+    //
+    // The drain loop + recheck-after-clearing pattern below avoids the classic lost-
+    // wakeup race: if a new Post() lands after the loop's last read of _dirty but
+    // before _scheduled is cleared, the recheck immediately after clearing it
+    // guarantees that value is still picked up by a follow-up dispatch rather than
+    // being stranded until some later, unrelated Post() call happens to arrive.
+    private sealed class Coalescer<T>
+    {
+        private readonly Action<T> _apply;
+        private readonly Action<Action> _marshal;
+        private T _latest;
+        private int _dirty;      // 1 while a posted value hasn't been applied yet
+        private int _scheduled;  // 1 while a drain callback is queued/running
+
+        public Coalescer(Action<T> apply, Action<Action> marshal)
+        {
+            _apply = apply;
+            _marshal = marshal;
+        }
+
+        public void Post(T value)
+        {
+            _latest = value;
+            _ = Interlocked.Exchange(ref _dirty, 1);
+            if (Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0)
+            {
+                _marshal(Drain);
+            }
+        }
+
+        private void Drain()
+        {
+            while (Interlocked.Exchange(ref _dirty, 0) == 1)
+            {
+                _apply(_latest);
+            }
+
+            _ = Interlocked.Exchange(ref _scheduled, 0);
+
+            // A Post() may have set _dirty=1 after the loop's final (false) check but
+            // before _scheduled was cleared above; if so, nothing else will drain it
+            // unless we reschedule here.
+            if (Volatile.Read(ref _dirty) == 1 && Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0)
+            {
+                _marshal(Drain);
+            }
+        }
     }
 }

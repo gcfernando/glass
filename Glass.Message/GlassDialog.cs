@@ -141,6 +141,8 @@ internal sealed class GlassDialog : Form
     private LinearGradientBrush _bgBrush;
     private LinearGradientBrush _titleBrush;
     private GraphicsPath _borderPath;
+    private Pen _countdownTrackPen;
+    private Pen _countdownFillPen;
 
     // Pens whose colours are fixed for the dialog's lifetime, so they live as
     // readonly fields and are disposed once in Dispose().
@@ -416,6 +418,20 @@ internal sealed class GlassDialog : Form
         _progressPanel = null;
         _messageLabel = null;
         InvalidateCache();
+
+        // The close-button/countdown pens are keyed on _scale, which only changes
+        // here (a DPI rebuild) — not on the per-frame resizes an open/close
+        // animation performs — so they are dropped here rather than in the more
+        // frequently-called InvalidateCache(), to avoid reallocating them every
+        // animation frame.
+        _closeXPenIdle?.Dispose();
+        _closeXPenIdle = null;
+        _closeXPenHover?.Dispose();
+        _closeXPenHover = null;
+        _countdownTrackPen?.Dispose();
+        _countdownTrackPen = null;
+        _countdownFillPen?.Dispose();
+        _countdownFillPen = null;
 
         // Dispose the old cloned icon (if owned) before replacing it.
         if (_ownsIconBitmap)
@@ -1540,7 +1556,10 @@ internal sealed class GlassDialog : Form
                 _theme.TitleColor, flags);
         }
 
-        // Close button: a red hover halo plus the two strokes of the "×".
+        // Close button: a red hover halo plus the two strokes of the "×". The two
+        // pens (hover/idle) are cached — not reallocated every WM_PAINT — since the
+        // close button repaints on every mouse-move hit-test change and on every
+        // animation frame while the dialog opens/closes.
         {
             var cb = _closeBtnBounds;
             if (_closeHover)
@@ -1549,31 +1568,52 @@ internal sealed class GlassDialog : Form
                 g.FillEllipse(hoverFill, cb);
             }
             var margin = Scale(5);
-            using var xPen = new Pen(
-                Color.FromArgb(_closeHover ? 220 : 130, _theme.TitleColor),
-                Math.Max(1f, _scale * 1.2f));
+            var xPen = GetCloseXPen(_closeHover);
             g.DrawLine(xPen, cb.X + margin, cb.Y + margin, cb.Right - margin - 1, cb.Bottom - margin - 1);
             g.DrawLine(xPen, cb.Right - margin - 1, cb.Y + margin, cb.X + margin, cb.Bottom - margin - 1);
         }
 
         // Countdown ring around the auto-close button: a faint full track plus an
-        // accent arc that sweeps down as the remaining time shrinks.
+        // accent arc that sweeps down as the remaining time shrinks. Both pens are
+        // fixed for the dialog's lifetime (until a DPI rebuild), so they are cached
+        // rather than allocated on every countdown tick's repaint.
         if (_cfg.AutoCloseMs > 0 && _countTimer != null)
         {
             var ratio = (float)_countRemaining / _cfg.AutoCloseMs;
             var arcD = BtnH - Scale(6);
             var arcX = w - Pad - arcD;
             var arcY = h - BtnPanelH + ((BtnPanelH - arcD) / 2);
-            using var trackPen = new Pen(Color.FromArgb(40, _theme.BorderColor), Scale(2));
-            using var fillPen = new Pen(_theme.AccentColor, Scale(2));
-            g.DrawArc(trackPen, arcX, arcY, arcD, arcD, 0, 360);
+            _countdownTrackPen ??= new Pen(Color.FromArgb(40, _theme.BorderColor), Scale(2));
+            _countdownFillPen ??= new Pen(_theme.AccentColor, Scale(2));
+            g.DrawArc(_countdownTrackPen, arcX, arcY, arcD, arcD, 0, 360);
             if (ratio > 0f)
             {
-                g.DrawArc(fillPen, arcX, arcY, arcD, arcD, -90, -(int)(360 * ratio));
+                g.DrawArc(_countdownFillPen, arcX, arcY, arcD, arcD, -90, -(int)(360 * ratio));
             }
         }
 
         PaintInputBorders(g);
+    }
+
+    // The two close-button "×" pens, built lazily and reused across paints. Keyed
+    // purely on hover state — the only thing that varies frame to frame — and
+    // dropped (and recreated lazily on next paint) in Rebuild() — a DPI change —
+    // not in the more frequently-called InvalidateCache(), which also runs on
+    // every OnResize during the open/close animation and would otherwise force
+    // a fresh Pen allocation on every animation frame.
+    private Pen _closeXPenIdle;
+    private Pen _closeXPenHover;
+
+    private Pen GetCloseXPen(bool hover)
+    {
+        if (hover)
+        {
+            return _closeXPenHover ??= new Pen(
+                Color.FromArgb(220, _theme.TitleColor), Math.Max(1f, _scale * 1.2f));
+        }
+
+        return _closeXPenIdle ??= new Pen(
+            Color.FromArgb(130, _theme.TitleColor), Math.Max(1f, _scale * 1.2f));
     }
 
     // Draws the themed border (and background fill) around the input controls,
@@ -2608,6 +2648,10 @@ internal sealed class GlassDialog : Form
             _panelSepPen?.Dispose();
             _inputBorderPen?.Dispose();
             _inputFillBrush?.Dispose();
+            _closeXPenIdle?.Dispose();
+            _closeXPenHover?.Dispose();
+            _countdownTrackPen?.Dispose();
+            _countdownFillPen?.Dispose();
             // Only dispose the icon bitmap when we created the clone ourselves.
             if (_ownsIconBitmap)
             {

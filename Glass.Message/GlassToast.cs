@@ -317,6 +317,17 @@ public static class GlassToast
         private const int _iconW = 20;
         private const int _iconGap = 8;
 
+        // Cached paint resources. A toast's size never changes after construction
+        // (unlike GlassDialog, there is no DPI rebuild/resize), so these are built
+        // once — lazily, since _dwmRounded (which affects the geometry) is only
+        // known after OnHandleCreated runs — and reused for every repaint, instead
+        // of allocating a path/brush/two pens on every fade-animation frame.
+        private GraphicsPath _bgPath;
+        private LinearGradientBrush _bgBrush;
+        private GraphicsPath _borderPath;
+        private Pen _glowPen;
+        private Pen _edgePen;
+
         public ToastForm(GlassToastOptions opts, GlassTheme resolvedTheme)
         {
             _opts = opts;
@@ -464,21 +475,17 @@ public static class GlassToast
             var h = ClientSize.Height;
             var r = _dwmRounded ? 0 : _effectiveRadius;
 
-            using (var path = GlassDialog.RoundRect(new Rectangle(0, 0, w, h), r))
-            using (var brush = new LinearGradientBrush(
+            _bgPath ??= GlassDialog.RoundRect(new Rectangle(0, 0, w, h), r);
+            _bgBrush ??= new LinearGradientBrush(
                 new Rectangle(0, 0, Math.Max(1, w), Math.Max(1, h)),
-                _theme.BackgroundTop, _theme.BackgroundBottom, LinearGradientMode.Vertical))
-            {
-                g.FillPath(brush, path);
-            }
+                _theme.BackgroundTop, _theme.BackgroundBottom, LinearGradientMode.Vertical);
+            g.FillPath(_bgBrush, _bgPath);
 
-            using (var borderPath = GlassDialog.RoundRect(new Rectangle(0, 0, w - 1, h - 1), r))
-            {
-                using var glow = new Pen(Color.FromArgb(60, _theme.BorderColor), 3f);
-                using var edge = new Pen(Color.FromArgb(190, _theme.BorderColor), 1f);
-                g.DrawPath(glow, borderPath);
-                g.DrawPath(edge, borderPath);
-            }
+            _borderPath ??= GlassDialog.RoundRect(new Rectangle(0, 0, w - 1, h - 1), r);
+            _glowPen ??= new Pen(Color.FromArgb(60, _theme.BorderColor), 3f);
+            _edgePen ??= new Pen(Color.FromArgb(190, _theme.BorderColor), 1f);
+            g.DrawPath(_glowPen, _borderPath);
+            g.DrawPath(_edgePen, _borderPath);
 
             var hasTitle = !string.IsNullOrEmpty(_opts.Title);
             var hasIcon = _icon != null;
@@ -512,6 +519,11 @@ public static class GlassToast
                 _fadeTimer?.Dispose();
                 _stayTimer?.Stop();
                 _stayTimer?.Dispose();
+                _bgPath?.Dispose();
+                _bgBrush?.Dispose();
+                _borderPath?.Dispose();
+                _glowPen?.Dispose();
+                _edgePen?.Dispose();
             }
             base.Dispose(disposing);
         }

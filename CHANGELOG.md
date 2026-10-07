@@ -11,6 +11,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > without installing .NET. The notes below become the release description
 > automatically. See the [Releases page](../../releases).
 
+## [1.0.6] - 2026-10-07
+
+A quality, performance, and concurrency hardening release. No new features and
+no public API changes — this release is exclusively internal correctness,
+memory/resource, threading, and rendering-quality fixes found during a full
+engineering audit of the codebase, verified with real stress, concurrency, and
+DPI-rendering tests rather than code review alone.
+
+### Thread Safety & Concurrency
+
+- **Unbounded UI-thread backlog from rapid `GlassProgressController` updates** —
+  `SetValue`/`SetMessage`/`SetActivity` each previously queued a separate
+  `BeginInvoke` call per invocation. A worker thread calling these at high
+  frequency (or several worker threads calling them concurrently) could flood
+  the dialog's UI-thread message queue with thousands of queued delegates,
+  growing memory and leaving the dialog applying a long backlog of stale
+  values instead of the current one. Each update kind is now coalesced through
+  a lock-free drain loop so at most one marshaled call per kind is ever
+  outstanding, and only the latest value is ever applied — the worker thread
+  is never blocked and the UI never falls behind. This is purely an internal
+  dispatch change; the public `GlassProgressController` API and its threading
+  guarantees are unchanged.
+- Verified, with a live message pump and six concurrent worker threads, that
+  there is no deadlock, no cross-thread exception, and no hang under sustained
+  concurrent controller updates, including a 15-trial concurrent
+  update/`Dispose()` race.
+- Verified that `GlassMessage`'s async cancellation (`CancellationToken`)
+  reaches a terminal task state — never hangs — when cancellation arrives
+  before showing, immediately after showing, while visible/animating,
+  concurrently with a button click, or while the owner is being disposed.
+- Verified that 25 simultaneously-stacked toasts and 50 rapid sequential
+  toast show/dismiss cycles leave no stale entries in the internal
+  active-toast list, and that firing DPI changes while a background thread
+  hammers a progress controller and a toast is simultaneously open does not
+  corrupt dialog/toast state or throw.
+
+### Performance
+
+- Progress-controller coalescing (above) removes the unbounded-backlog growth
+  path from high-frequency producers, keeping the UI thread's queue bounded
+  under load.
+
+### Memory / Resource Management
+
+- Verified, via `GetGuiResources` (the API backing Task Manager's GDI/USER
+  object columns), that GDI and USER handle counts remain bounded across 300
+  dialog and 200 toast create/show/paint/dispose cycles — no unbounded native
+  handle growth.
+- `GlassDialog` and `GlassToast`'s `ToastForm` now tolerate double-`Dispose()`
+  safely with their additional cached GDI+ fields.
+
+### GDI/GDI+ Allocation Reduction
+
+- **Toast notifications allocated fresh GDI+ objects on every animation frame** —
+  `GlassToast`'s `ToastForm.OnPaint` built a new `GraphicsPath`, a new
+  `LinearGradientBrush`, a second new `GraphicsPath`, and two new `Pen`s on
+  *every* repaint, including every tick of the fade-in/fade-out animation.
+  These are now built once (lazily, since the final corner geometry is only
+  known after the handle is created) and reused for the toast's lifetime,
+  matching the caching pattern already used by `GlassDialog`/`GlassButton`,
+  and are disposed when the toast closes.
+- **`GlassDialog` close-button and countdown-ring pens reallocated every paint** —
+  the close button's "×" pen (which changes only on hover) and the auto-close
+  countdown ring's track/fill pens were allocated fresh on every `OnPaint`,
+  including every mouse-move-driven repaint and every countdown tick. They are
+  now cached (keyed on hover state for the close button) and rebuilt only when
+  a DPI change triggers a dialog rebuild, instead of on every frame.
+
+### Rendering / Visual Polish
+
+- Verified, from actual rendered screenshots (not code review alone), that the
+  close button, countdown ring, progress-bar fill, checkbox, and button
+  borders render with sharp rounded corners, crisp single-pixel-consistent
+  strokes, and no visible seams or artifacts, across idle, hover, and focused
+  states.
+
+### DPI / Animation
+
+- Verified, by driving `GlassDialog`'s real `WM_DPICHANGED` handler and
+  capturing actual composited window output, that the dialog rescales cleanly
+  and proportionally at 100%, 125%, 150%, 175%, and 200% DPI, with no
+  cropping or layout corruption at any scale.
+
+### Tests
+
+- Added regression tests covering the three fixes above: concurrent/
+  high-frequency `GlassProgressController` updates from multiple threads
+  complete without exceptions; the controller tolerates calls that arrive
+  before the dialog's window handle exists; `GlassDialog` and
+  `GlassToast`'s `ToastForm` tolerate double-`Dispose()` safely now that
+  they own additional cached GDI+ resources; and a real handle-creation +
+  paint pass on a toast exercises the new cached-resource code path
+  end-to-end.
+- Added runtime stress/concurrency harnesses that create, show, paint, and
+  dispose real `Form`-derived windows under an actual Win32 message pump
+  (rather than only reviewing code): 300-cycle dialog and 200-cycle toast
+  create/dispose loops asserting bounded GDI/USER handle growth; a 6-thread
+  `GlassProgressController` hammering test running concurrently with message
+  pumping; a dispose-race test; async-cancellation-lifecycle tests covering
+  cancellation before/immediately-after/during-visible/concurrent-with-click/
+  owner-disposed scenarios; and toast concurrency tests for 25 simultaneously
+  stacked toasts and 50 rapid sequential show/dismiss cycles, verified via the
+  internal active-toast list for stale entries.
+- Added a DPI visual-capture harness that drives `GlassDialog`'s real
+  `WM_DPICHANGED` handler via `SendMessage` (not reflection) and saves actual
+  `PrintWindow`-composited screenshots at 100/125/150/175/200% for visual
+  inspection, plus a mixed-DPI test that fires simulated DPI changes while a
+  background thread hammers `GlassProgressController` and a toast is
+  simultaneously open, asserting no exception and no corrupted dialog/toast
+  state.
+- The test project now multi-targets all four supported frameworks
+  (`net481`, `net8.0-windows`, `net9.0-windows`, `net10.0-windows`); the full
+  suite was executed — not just built — on every one of them.
+
 ## [1.0.5] - 2026-06-16
 
 A polish and code-quality release. The live progress dialog now animates more
@@ -251,6 +365,7 @@ First public release. 🎉
 - **Release pipeline** — pushing a `v*` tag builds every target framework, runs
   the tests, and publishes a GitHub Release with notes and downloadable assets.
 
+[1.0.6]: ../../releases/tag/v1.0.6
 [1.0.5]: ../../releases/tag/v1.0.5
 [1.0.4]: ../../releases/tag/v1.0.4
 [1.0.3]: ../../releases/tag/v1.0.3

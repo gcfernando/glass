@@ -31,6 +31,30 @@ No new dependencies. No additional configuration. Works on .NET Framework 4.8.1 
 
 ---
 
+## 🆕 What's new in v1.0.6
+
+A quality, performance, and concurrency hardening maintenance release — no new
+features, no public API changes. Verified with real stress/concurrency tests
+and rendered DPI screenshots:
+
+- **Improved concurrency behavior** — `GlassProgressController` updates from
+  background threads now coalesce instead of flooding the UI thread, verified
+  under sustained multi-threaded load with no deadlocks or hangs.
+- **Reduced rendering allocation pressure** — toast notifications and the
+  dialog's close-button/countdown-ring no longer allocate new GDI+ objects on
+  every repaint or animation frame; they're built once and reused.
+- **Improved resource management** — GDI/USER handle counts verified stable
+  across hundreds of dialog/toast create-and-dispose cycles.
+- **DPI / rendering polish** — dialog rescaling verified clean at 100–200% DPI
+  from actual rendered output, with no cropping or visual artifacts.
+- **Reliability** — verified no stale toast state under rapid/simultaneous
+  toast creation and dismissal, and no corruption when a DPI change occurs
+  while progress updates and an open toast are concurrently active.
+
+Full technical details: [CHANGELOG.md](https://github.com/gcfernando/glass/blob/main/CHANGELOG.md).
+
+---
+
 ## Install
 
 ```

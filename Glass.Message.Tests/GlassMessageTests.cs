@@ -10,6 +10,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Glass.Message.Tests;
@@ -212,7 +213,7 @@ public class GlassBuilderTests
     [Fact]
     public void GlassAnimation_Has_Four_Values()
     {
-        var values = Enum.GetValues<GlassAnimation>();
+        var values = (GlassAnimation[])Enum.GetValues(typeof(GlassAnimation));
         Assert.Equal(4, values.Length);
     }
 
@@ -435,11 +436,9 @@ public class OsVersionTests
     [Fact]
     public void Reports_At_Least_Windows10_On_Windows()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
+        // Every TFM this test project targets (net481/net8.0-windows+) is
+        // Windows-only, so OperatingSystem.IsWindows() (unavailable on
+        // net481's older BCL surface) would always be true here anyway.
         Assert.True(OsVersion.Major >= 10);
     }
 
@@ -579,6 +578,104 @@ public class V102RegressionTests
     public void InputDropdown_Null_Items_Does_Not_Throw()
     {
         var ex = Record.Exception(() => GlassMessage.Create("msg").InputDropdown(null));
+        Assert.Null(ex);
+    }
+}
+
+/// <summary>
+/// Covers the v1.0.6 fixes: bounded/coalesced <see cref="GlassProgressController"/>
+/// updates (no unbounded UI-thread backlog from rapid/concurrent calls) and the new
+/// cached paint resources in <see cref="GlassDialog"/>/<see cref="GlassToast"/>'s
+/// <c>ToastForm</c>, which must dispose cleanly (including double-dispose) now that
+/// they are no longer allocated fresh on every <c>OnPaint</c>.
+/// </summary>
+public class V106RegressionTests
+{
+    // Before the handle exists, GlassProgressController.Marshal() is a documented
+    // no-op (it checks IsHandleCreated), so this never actually touches the UI —
+    // it instead exercises the Coalescer<T>'s Interlocked drain-loop under real
+    // multi-threaded contention and asserts it never throws or deadlocks, which is
+    // the behaviour the v1.0.6 backlog-bounding fix depends on.
+    [Fact]
+    public void ProgressController_Rapid_Concurrent_Updates_Do_Not_Throw()
+    {
+        var cfg = new GlassDialogConfig { ShowProgress = true, ProgressValue = 0, ProgressMax = 100 };
+        using var dlg = new GlassDialog(cfg);
+        var tcs = new TaskCompletionSource<GlassResult>();
+        var controller = new GlassProgressController(dlg, tcs.Task);
+
+        var ex = Record.Exception(() =>
+        {
+            Parallel.For(0, 8, worker =>
+            {
+                for (var i = 0; i < 500; i++)
+                {
+                    controller.SetValue(i);
+                    controller.SetMessage($"worker {worker} step {i}");
+                    controller.SetActivity(i % 2 == 0 ? GlassProgressActivity.Upload : GlassProgressActivity.Download);
+                }
+            });
+        });
+
+        Assert.Null(ex);
+        tcs.TrySetResult(new GlassResult(DialogResult.Cancel, false, string.Empty));
+    }
+
+    [Fact]
+    public void ProgressController_Close_Without_Handle_Does_Not_Throw()
+    {
+        var cfg = new GlassDialogConfig { ShowProgress = true };
+        using var dlg = new GlassDialog(cfg);
+        var tcs = new TaskCompletionSource<GlassResult>();
+        var controller = new GlassProgressController(dlg, tcs.Task);
+
+        // The dialog never got a handle (never shown), matching the "call arrives
+        // before handle creation" scenario the controller must tolerate.
+        var ex = Record.Exception(() =>
+        {
+            controller.SetValue(42);
+            controller.Close();
+        });
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void GlassDialog_Dispose_Twice_Is_Safe()
+    {
+        var cfg = new GlassDialogConfig { AutoCloseMs = 5_000 };
+        var dlg = new GlassDialog(cfg);
+        dlg.Dispose();
+        var ex = Record.Exception(dlg.Dispose);
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void ToastForm_Dispose_Twice_Is_Safe()
+    {
+        var form = new GlassToast.ToastForm(new GlassToastOptions { Message = "hi" }, GlassTheme.Default);
+        form.Dispose();
+        var ex = Record.Exception(form.Dispose);
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void ToastForm_Handle_Creation_And_Paint_Does_Not_Throw()
+    {
+        // Forces OnHandleCreated (which finalises _dwmRounded) and a real OnPaint
+        // pass, so the lazily-built cached GraphicsPath/brush/pens in ToastForm are
+        // actually exercised and then cleanly disposed.
+        using var form = new GlassToast.ToastForm(new GlassToastOptions { Message = "hello world" }, GlassTheme.Default);
+        var ex = Record.Exception(() =>
+        {
+            _ = form.Handle; // forces handle + OnHandleCreated
+            using var bmp = new Bitmap(Math.Max(1, form.Width), Math.Max(1, form.Height));
+            using var g = Graphics.FromImage(bmp);
+            using var pe = new PaintEventArgs(g, form.ClientRectangle);
+            form.Invalidate();
+            typeof(Control)
+                .GetMethod("OnPaint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.Invoke(form, [pe]);
+        });
         Assert.Null(ex);
     }
 }
