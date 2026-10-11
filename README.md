@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🪟 Glass.Message
+# 🪟 Glass.Message — Modern MessageBox Replacement for WinForms (C#/.NET)
 
 ### The modern `MessageBox` replacement for Windows desktop apps
 
