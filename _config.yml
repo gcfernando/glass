@@ -1,0 +1,34 @@
+# GitHub Pages documentation site; does not configure application deployment.
+url: "https://gcfernando.github.io"
+baseurl: "/glass"
+title: "Glass.Message"
+description: "A Windows Forms MessageBox replacement with Mica and Acrylic backdrops, async dialogs, inline inputs, progress bars and toast notifications."
+lang: "en"
+plugins:
+  - jekyll-sitemap
+exclude:
+  - packages
+  - bin
+  - obj
+  - node_modules
+  - vendor
+  - tests
+  - .claude
+  - .agents
+  - .codex
+defaults:
+  - scope:
+      path: "CHANGELOG.md"
+    values:
+      title: "Changelog"
+      description: "All notable changes to Glass.Message are documented here."
+  - scope:
+      path: "README.md"
+    values:
+      title: "🪟 Glass.Message — Modern MessageBox Replacement for WinForms (C#/.NET)"
+      description: "A Windows Forms MessageBox replacement with Mica and Acrylic backdrops, async dialogs, inline inputs, progress bars and toast notifications."
+  - scope:
+      path: "README.nuget.md"
+    values:
+      title: "🪟 Glass.Message"
+      description: "Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API · async/await dialogs · inline text & password inputs · activity-aware live progress bars · toast…"
