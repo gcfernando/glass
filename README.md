@@ -237,12 +237,12 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 
 ## 📦 Installation
 
-<details open>
+<details open markdown="1">
 <summary><b>Option A — Download from Releases</b> (no account, no NuGet needed)</summary>
 
 <br/>
 
-Grab the latest build straight from the repo's **[Releases page](../../releases)** → **Latest**. Each release includes:
+Grab the latest build straight from the repo's **[Releases page](https://github.com/gcfernando/glass/releases)** → **Latest**. Each release includes:
 
 | Download | Use it for |
 |---|---|
@@ -266,7 +266,7 @@ To use a raw DLL, unzip it and reference `Glass.Message.dll` from your project:
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Option B — Project reference</b> (how the demo is wired today)</summary>
 
 <br/>
@@ -283,7 +283,7 @@ dotnet add reference ..\Glass.Message\Glass.Message.csproj
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Option C — NuGet package (local or private feed)</b></summary>
 
 <br/>
@@ -332,7 +332,7 @@ if (result == DialogResult.OK) { /* ... */ }
 
 Grouped and collapsible — expand what you need.
 
-<details open>
+<details open markdown="1">
 <summary><b>1 · Drop-in replacement — <code>Show</code></b></summary>
 
 <br/>
@@ -352,7 +352,7 @@ GlassMessage.Show(
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>2 · Fluent builder — <code>Create(...)</code></b></summary>
 
 <br/>
@@ -384,7 +384,7 @@ GlassMessage.Create(
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>3 · Auto-detect the OS theme</b></summary>
 
 <br/>
@@ -407,7 +407,7 @@ GlassMessage.Create($"Windows is currently in {modeName} mode…")
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>4 · Countdown auto-close — <code>AutoClose(...)</code></b></summary>
 
 <br/>
@@ -430,7 +430,7 @@ GlassMessage.Create("Your Contoso Portal session is about to expire.")
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>5 · Checkbox — <code>CheckBox(...)</code> + <code>ShowEx()</code></b></summary>
 
 <br/>
@@ -452,7 +452,7 @@ if (r.CheckBoxChecked) { /* persist the preference */ }
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>6 · Inputs — text · password · dropdown · multiline</b></summary>
 
 <br/>
@@ -510,7 +510,7 @@ GlassMessage.Create("Choose the output format.")
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>7 · Expandable detail — <code>Detail(...)</code></b></summary>
 
 <br/>
@@ -535,7 +535,7 @@ GlassMessage.Create("OneDrive failed to sync 'Annual_Report_Q4_2025.xlsx'.")
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>8 · Progress — determinate, indeterminate &amp; activity-aware</b></summary>
 
 <br/>
@@ -596,7 +596,7 @@ as an operation moves between phases (e.g. `Compress` → `Upload`).
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>9 · Custom bitmap icon — <code>Icon(Bitmap)</code></b></summary>
 
 <br/>
@@ -623,7 +623,7 @@ GlassMessage.Create("Your custom branding has been applied.")
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>10 · Keyboard — <code>Ctrl+C</code>, <code>Enter</code>, <code>Esc</code></b></summary>
 
 <br/>
@@ -637,7 +637,7 @@ No code required:
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>11 · Animations — <code>Animation(...)</code></b></summary>
 
 <br/>
@@ -661,7 +661,7 @@ GlassMessage.Create("Glass.Message 1.0 is available.")
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>12 · Rich result — <code>ShowEx()</code></b></summary>
 
 <br/>
@@ -701,7 +701,7 @@ if (r.Button == DialogResult.No) { /* "Secure account" */ }
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>13 · Async, non-blocking — <code>ShowAsync(...)</code></b></summary>
 
 <br/>
@@ -730,7 +730,7 @@ private static async void SyncWorkspace()
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>14 · Right-to-left — <code>RightToLeft()</code></b></summary>
 
 <br/>
@@ -748,7 +748,7 @@ GlassMessage.Create("فشل حفظ الملف: تقرير_الربع_الراب�
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>15 · Real-world compositions</b></summary>
 
 <br/>
@@ -801,7 +801,7 @@ if (r.Button == DialogResult.OK)
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>16 · Toasts — <code>GlassToast</code></b></summary>
 
 <br/>
@@ -848,7 +848,7 @@ GlassToast.Show(new GlassToastOptions
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>17 · Async builder — <code>ShowAsync()</code> / <code>ShowExAsync()</code></b></summary>
 
 <br/>
@@ -876,7 +876,7 @@ if (r.Button == DialogResult.OK)
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>18 · Live progress — <code>ShowProgress()</code> + <code>GlassProgressController</code></b></summary>
 
 <br/>
@@ -910,7 +910,7 @@ await progress.Completion;            // completes when the dialog closes
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>19 · System sounds — <code>Sound()</code></b></summary>
 
 <br/>
@@ -945,7 +945,7 @@ GlassMessage.PlaySystemSounds = true;
 - **`DemoForm`** builds its UI from one `(string Label, Action Action)[]` table — the single place to edit when adding a showcase.
 - **Each `Demo_*` method** is self-contained and demonstrates exactly one capability with realistic copy.
 
-<details>
+<details markdown="1">
 <summary><b>Full demo → feature map (32 demos)</b></summary>
 
 <br/>
@@ -991,7 +991,7 @@ GlassMessage.PlaySystemSounds = true;
 
 ## 🔧 API Overview
 
-<details>
+<details markdown="1">
 <summary><b><code>GlassMessage</code> — static facade</b></summary>
 
 <br/>
@@ -1021,7 +1021,7 @@ static bool       PlaySystemSounds  { get; set; }  // = false
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b><code>GlassBuilder</code> — fluent builder</b></summary>
 
 <br/>
@@ -1056,7 +1056,7 @@ static bool       PlaySystemSounds  { get; set; }  // = false
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b><code>GlassResult</code>, <code>GlassToast</code> &amp; enums</b></summary>
 
 <br/>
@@ -1109,6 +1109,8 @@ enum ToastPosition  { BottomRight, BottomLeft, TopRight, TopLeft, BottomCenter, 
 </details>
 
 ---
+
+<a id="-configuration"></a>
 
 ## ⚙️ Configuration
 
@@ -1194,6 +1196,8 @@ GlassMessage.DefaultTheme = brand;   // apply everywhere
 
 ---
 
+<a id="-project-structure"></a>
+
 ## 🗂️ Project Structure
 
 ```
@@ -1236,6 +1240,8 @@ Glass/
 
 ---
 
+<a id="-running-the-demo"></a>
+
 ## ▶️ Running the Demo
 
 **Visual Studio:** open `Glass.sln` → set **Glass.Demo** as startup → press **F5**.
@@ -1253,42 +1259,42 @@ dotnet build Glass.sln -c Release   # build everything
 
 ## ❓ FAQ
 
-<details>
+<details markdown="1">
 <summary><b>Can I really just replace <code>MessageBox</code> with <code>GlassMessage</code>?</b></summary>
 <br/>Yes — <code>GlassMessage.Show(...)</code> is signature-compatible with <code>MessageBox.Show(...)</code>, so most call sites compile unchanged and still return a <code>DialogResult</code>.
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>How do I get the checkbox state or typed input back?</b></summary>
 <br/>Call <code>ShowEx()</code> instead of <code>Show()</code> and read <code>GlassResult.CheckBoxChecked</code> / <code>GlassResult.InputText</code>.
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>My three-button dialog returns odd <code>DialogResult</code> values. Why?</b></summary>
 <br/>Custom labels map to the nearest standard layout by count: 1→OK, 2→OK/Cancel, 3+→Yes/No/Cancel. With three labels the buttons return <code>Yes</code> / <code>No</code> / <code>Cancel</code> in order.
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>How do I make dialogs follow the user's Windows theme?</b></summary>
 <br/><code>GlassMessage.DefaultTheme = GlassTheme.AutoDetect();</code> at startup.
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Are toasts modal? Does it block the UI thread?</b></summary>
 <br/>Toasts are non-modal, top-most, auto-dismissing windows. <code>Show()</code>/<code>ShowEx()</code> are modal (blocking); use <code>ShowAsync(...)</code> for a non-blocking, awaitable dialog.
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>How do I close an async dialog from code?</b></summary>
 <br/>Pass a <code>CancellationToken</code> to <code>ShowAsync</code>; cancelling it closes the dialog and yields <code>DialogResult.Cancel</code>.
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Can I hide the Caps Lock hint on password fields?</b></summary>
 <br/>Yes — pass <code>showCapsLockHint: false</code> to <code>InputPassword()</code>:<br/><code>.InputPassword("placeholder", showCapsLockHint: false)</code>
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Which .NET versions are supported?</b></summary>
 <br/>.NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows).
 </details>
@@ -1309,7 +1315,7 @@ dotnet build Glass.sln -c Release   # build everything
 
 ## 🚢 Release pipeline
 
-Releases are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml), triggered by pushing a version tag (`git push origin v1.2.3`), publishing a GitHub Release, or a manual run. The pipeline is split into focused jobs so independent work runs in parallel and a failure points straight at the stage that broke:
+Releases are produced by [`.github/workflows/release.yml`](https://github.com/gcfernando/glass/blob/main/.github/workflows/release.yml), triggered by pushing a version tag (`git push origin v1.2.3`), publishing a GitHub Release, or a manual run. The pipeline is split into focused jobs so independent work runs in parallel and a failure points straight at the stage that broke:
 
 ```
 metadata ─► test ─┬─► package ─┐
