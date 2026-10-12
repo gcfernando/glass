@@ -253,3 +253,9 @@ Windows-only (WinForms). No third-party runtime dependencies.
 
 MIT Licensed · © 2026 Gehan Fernando  
 *Keywords: WinForms MessageBox replacement, Windows Forms modern dialog, dark mode dialog .NET, Windows 11 Mica dialog, Acrylic WinForms, async MessageBox C#, WinForms toast notification, DPI-aware dialog, WinForms progress dialog, WinForms input dialog, WinForms password dialog, themed dialog WinForms, GlassMessage, Glass.Message*
+
+---
+
+## Documentation links
+
+[Read all Glass.Message guides online](https://gcfernando.github.io/glass/documentation/) · [Project overview](https://gcfernando.github.io/glass/) · [All developer projects](https://gcfernando.github.io/gcfernando/projects/)

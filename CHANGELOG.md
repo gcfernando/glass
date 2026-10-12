@@ -371,3 +371,9 @@ First public release. 🎉
 [1.0.3]: ../../releases/tag/v1.0.3
 [1.0.2]: ../../releases/tag/v1.0.2
 [1.0.1]: ../../releases/tag/v1.0.1
+
+---
+
+## Documentation links
+
+[Read all Glass.Message guides online](https://gcfernando.github.io/glass/documentation/) · [Project overview](https://gcfernando.github.io/glass/) · [All developer projects](https://gcfernando.github.io/gcfernando/projects/)

@@ -1,4 +1,4 @@
-<div align="center">
+<div align="center" markdown="1">
 
 # 🪟 Glass.Message — Modern MessageBox Replacement for WinForms (C#/.NET)
 
@@ -151,7 +151,7 @@ progress.SetActivity(GlassProgressActivity.Sync);     // ripple eases both ways
 </tr>
 </table>
 
-<div align="center">
+<div align="center" markdown="1">
 
 **Toasts** — non-modal, auto-stacking notifications at any corner
 
@@ -1422,10 +1422,16 @@ internal sealed class MainForm : Form
 
 ---
 
-<div align="center">
+<div align="center" markdown="1">
 
 **Glass.Message** — built with care by **Gehan Fernando** · MIT Licensed
 
 <sub>A modern message box, the way Windows dialogs should look.</sub>
 
 </div>
+
+---
+
+## Documentation links
+
+[Read all Glass.Message guides online](https://gcfernando.github.io/glass/documentation/) · [Project overview](https://gcfernando.github.io/glass/) · [All developer projects](https://gcfernando.github.io/gcfernando/projects/)

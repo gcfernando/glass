@@ -32,3 +32,9 @@ defaults:
     values:
       title: "🪟 Glass.Message"
       description: "Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API · async/await dialogs · inline text & password inputs · activity-aware live progress bars · toast…"
+
+# Public documentation navigation and presentation.
+repository: gcfernando/glass
+theme: jekyll-theme-primer
+projects_hub: https://gcfernando.github.io/gcfernando/projects/
+project_category: "Libraries & packages"
