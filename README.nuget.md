@@ -57,7 +57,7 @@ Full technical details: [CHANGELOG.md](https://github.com/gcfernando/glass/blob/
 
 ## Install
 
-```
+```text
 dotnet add package Glass.Message
 ```
 

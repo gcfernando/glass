@@ -2,7 +2,9 @@
 
 # 🪟 Glass.Message — Modern MessageBox Replacement for WinForms (C#/.NET)
 
-### The modern `MessageBox` replacement for Windows desktop apps
+<a id="the-modern-messagebox-replacement-for-windows-desktop-apps"></a>
+
+Glass.Message is a C# Windows Forms dialog library for .NET Framework 4.8.1 and .NET 8, 9 and 10. It provides themed message dialogs, inline inputs, progress dialogs and toast notifications.
 
 Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder · async dialogs · inline inputs · progress · toasts · full RTL
 
@@ -23,7 +25,7 @@ Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder �
 
 <img src="Images/Feature%20Gallery.png" width="420" alt="Glass.Message feature gallery"/>
 
-<em>One tiny library. Every dialog your app will ever need.</em>
+<em>Themed dialogs, inline inputs, progress and toast notifications.</em>
 
 </div>
 
@@ -31,7 +33,7 @@ Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder �
 
 ## ✨ The one-line pitch
 
-You already write `MessageBox.Show(...)`. Change the type name to `GlassMessage` and your dull system dialog becomes a modern, themed, DPI-aware, animated one — **with zero other code changes.**
+For supported `MessageBox.Show(...)` overloads, use `GlassMessage.Show(...)` to display a themed, DPI-aware dialog. Install the package and import its namespace as shown in the quick start, then choose a standard overload or use the fluent builder for additional options.
 
 <table>
 <tr>
@@ -1200,7 +1202,7 @@ GlassMessage.DefaultTheme = brand;   // apply everywhere
 
 ## 🗂️ Project Structure
 
-```
+```text
 Glass/
 ├── Glass.sln                     # Solution: library + demo + tests
 ├── README.md  ·  LICENSE         # This file · MIT
@@ -1317,7 +1319,7 @@ dotnet build Glass.sln -c Release   # build everything
 
 Releases are produced by [`.github/workflows/release.yml`](https://github.com/gcfernando/glass/blob/main/.github/workflows/release.yml), triggered by pushing a version tag (`git push origin v1.2.3`), publishing a GitHub Release, or a manual run. The pipeline is split into focused jobs so independent work runs in parallel and a failure points straight at the stage that broke:
 
-```
+```text
 metadata ─► test ─┬─► package ─┐
                   └─► demo ────┴─► release ─► publish-nuget
 ```
