@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > assets — the multi-framework NuGet package (`.nupkg` + `.snupkg`), a raw DLL
 > zip per target framework, and self-contained demo apps (x64 + x86) you can run
 > without installing .NET. The notes below become the release description
-> automatically. See the [Releases page](../../releases).
+> automatically. See the [Releases page](https://github.com/gcfernando/glass/releases).
 
 ## [1.0.6] - 2026-10-07
 
@@ -365,12 +365,12 @@ First public release. 🎉
 - **Release pipeline** — pushing a `v*` tag builds every target framework, runs
   the tests, and publishes a GitHub Release with notes and downloadable assets.
 
-[1.0.6]: ../../releases/tag/v1.0.6
-[1.0.5]: ../../releases/tag/v1.0.5
-[1.0.4]: ../../releases/tag/v1.0.4
-[1.0.3]: ../../releases/tag/v1.0.3
-[1.0.2]: ../../releases/tag/v1.0.2
-[1.0.1]: ../../releases/tag/v1.0.1
+[1.0.6]: https://github.com/gcfernando/glass/releases/tag/v1.0.6
+[1.0.5]: https://github.com/gcfernando/glass/releases/tag/v1.0.5
+[1.0.4]: https://github.com/gcfernando/glass/releases/tag/v1.0.4
+[1.0.3]: https://github.com/gcfernando/glass/releases/tag/v1.0.3
+[1.0.2]: https://github.com/gcfernando/glass/releases/tag/v1.0.2
+[1.0.1]: https://github.com/gcfernando/glass/releases/tag/v1.0.1
 
 ---
 

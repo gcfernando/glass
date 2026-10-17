@@ -20,18 +20,18 @@ defaults:
   - scope:
       path: "CHANGELOG.md"
     values:
-      title: "Changelog"
-      description: "All notable changes to Glass.Message are documented here."
+      title: "Glass.Message Changelog and Release Notes"
+      description: "Review Glass.Message release history, including new Windows Forms dialog features, fixes and compatibility changes."
   - scope:
       path: "README.md"
     values:
-      title: "🪟 Glass.Message — Modern MessageBox Replacement for WinForms (C#/.NET)"
+      title: "Glass.Message — WinForms MessageBox Replacement for .NET"
       description: "A Windows Forms MessageBox replacement with Mica and Acrylic backdrops, async dialogs, inline inputs, progress bars and toast notifications."
   - scope:
       path: "README.nuget.md"
     values:
-      title: "🪟 Glass.Message"
-      description: "Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API · async/await dialogs · inline text & password inputs · activity-aware live progress bars · toast…"
+      title: "Glass.Message NuGet Package — WinForms Dialog Library"
+      description: "Install Glass.Message from NuGet and use themed Windows Forms dialogs, async inputs, progress indicators and toast notifications."
 
 # Public documentation navigation and presentation.
 repository: gcfernando/glass

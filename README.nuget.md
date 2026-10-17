@@ -1,4 +1,4 @@
-# 🪟 Glass.Message
+# 🪟 Glass.Message — WinForms MessageBox Replacement for C# and .NET
 
 **The modern `MessageBox` replacement for .NET WinForms — Windows 11 ready, zero migration cost.**
 
