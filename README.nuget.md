@@ -2,7 +2,7 @@
 
 **The modern `MessageBox` replacement for .NET WinForms — Windows 11 ready, explicit, familiar dialog APIs.**
 
-Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API · async/await dialogs · inline text & password inputs · activity-aware live progress bars · toast notifications · per-monitor DPI · full RTL support.
+Mica & Acrylic backdrops · dark/light theme detection · fluent builder API · async/await dialogs · inline text & password inputs · activity-aware live progress bars · toast notifications · per-monitor DPI · mirrored RTL layout.
 
 [![NuGet](https://img.shields.io/nuget/v/Glass.Message?color=0078D6&logo=nuget)](https://www.nuget.org/packages/Glass.Message)
 [![Downloads](https://img.shields.io/nuget/dt/Glass.Message?color=3da639)](https://www.nuget.org/packages/Glass.Message)
@@ -33,23 +33,7 @@ No new dependencies. No additional configuration. Works on .NET Framework 4.8.1 
 
 ## 🆕 What's new in v1.0.6
 
-A quality, performance, and concurrency hardening maintenance release — no new
-features, no public API changes. Verified with real stress/concurrency tests
-and rendered DPI screenshots:
-
-- **Improved concurrency behavior** — `GlassProgressController` updates from
-  background threads now coalesce instead of flooding the UI thread, verified
-  under sustained multi-threaded load with no deadlocks or hangs.
-- **Reduced rendering allocation pressure** — toast notifications and the
-  dialog's close-button/countdown-ring no longer allocate new GDI+ objects on
-  every repaint or animation frame; they're built once and reused.
-- **Improved resource management** — GDI/USER handle counts verified stable
-  across hundreds of dialog/toast create-and-dispose cycles.
-- **DPI / rendering polish** — dialog rescaling verified clean at 100–200% DPI
-  from actual rendered output, with no cropping or visual artifacts.
-- **Reliability** — verified no stale toast state under rapid/simultaneous
-  toast creation and dismissal, and no corruption when a DPI change occurs
-  while progress updates and an open toast are concurrently active.
+This maintenance release coalesces rapid `GlassProgressController` updates and caches toast, close-button and countdown paint resources. The repository includes concurrency, handle-growth, lifecycle and DPI-capture tests. These describe available checks, not a fresh test result: run them in a Windows desktop session and inspect generated captures for visual quality.
 
 Full technical details: [CHANGELOG.md](https://github.com/gcfernando/glass/blob/main/CHANGELOG.md).
 
@@ -101,7 +85,7 @@ using System.Windows.Forms;
 
 // Optional — set once at startup (e.g. in Program.cs or Form_Load)
 GlassMessage.UseRoundedCorners = true;                    // Windows 11 rounded corners
-GlassMessage.DefaultTheme      = GlassTheme.AutoDetect(); // follow the OS light / dark theme
+GlassMessage.DefaultTheme      = GlassTheme.AutoDetect(); // select the current OS theme
 GlassMessage.PlaySystemSounds  = true;                    // match classic MessageBox behaviour
 
 // Glass overload: icon precedes buttons; returns DialogResult
@@ -140,7 +124,7 @@ if (r.Button == DialogResult.OK)
 // Password input (masked, with reveal-eye toggle and Caps Lock hint)
 var r = GlassMessage.Create("Enter your vault password to continue.")
     .Title("Authentication Required")
-    .Icon(MessageBoxIcon.Shield)
+    .Icon(MessageBoxIcon.Warning)
     .InputPassword("Password")
     .Buttons("Unlock", "Cancel")
     .ShowEx();
@@ -182,9 +166,11 @@ for (int i = 0; i <= 100; i += 10)
     ctrl.SetMessage($"Uploading file {i / 10 + 1} of 10…");
     await Task.Delay(500);
 }
-ctrl.Complete();
+if (!ctrl.WasCanceledByUser) ctrl.Complete();
 await ctrl.Completion;
 ```
+
+The controller coalesces updates and marshals them to the UI thread. `SetMessage` updates an existing label without resizing it; `SetValue` cannot switch a marquee bar to determinate mode. User dismissal closes the dialog; your application must stop its own work. Async dialog cancellation completes normally with `DialogResult.Cancel`.
 
 ### Toast notifications
 
@@ -215,7 +201,7 @@ await GlassToast.ShowAsync(new GlassToastOptions
 
 ## Theming
 
-Five built-in presets — pick one or build your own:
+Five built-in presets — pick one or build your own. `AutoDetect()` selects a preset when called; call it again from your application's theme-change handling to update the default. Presets are shared; custom themes own their fonts and should be disposed after all dialogs using them close:
 
 | Preset | Description |
 |---|---|
@@ -233,9 +219,9 @@ Five built-in presets — pick one or build your own:
 | Framework | Notes |
 |---|---|
 | `.NET Framework 4.8.1` | Full support, ships explicit WinForms references |
-| `.NET 8.0-windows` | LTS |
-| `.NET 9.0-windows` | Current |
-| `.NET 10.0-windows` | Preview |
+| `.NET 8.0-windows` | Library target |
+| `.NET 9.0-windows` | Library target |
+| `.NET 10.0-windows` | Library target |
 
 AnyCPU — runs in both **x86** and **x64** processes.  
 Windows-only (WinForms). No third-party runtime dependencies.

@@ -8,7 +8,7 @@
 
 Glass.Message is a C# Windows Forms dialog library for .NET Framework 4.8.1 and .NET 8, 9 and 10. It provides themed message dialogs, inline inputs, progress dialogs and toast notifications.
 
-Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder · async dialogs · inline inputs · progress · toasts · full RTL
+Mica &amp; Acrylic backdrops · dark/light theme detection · fluent builder · async dialogs · inline inputs · progress · toasts · mirrored RTL layout
 
 <br/>
 
@@ -92,7 +92,7 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 | **Live progress** | `ShowProgress()` → a thread-safe `GlassProgressController` you update while work runs |
 | **Activity-aware progress** | `ProgressActivity(...)` animates the bar to match the operation (upload, download, sync, compress, …) — 6 distinct families, switchable live |
 | **Theming** | `Dark`, `Light`, `Mica`, `HighContrast`, `WindowsClassic` + custom themes |
-| **Auto theme** | `GlassTheme.AutoDetect()` follows the Windows light/dark/HC setting |
+| **Auto theme** | `GlassTheme.AutoDetect()` selects the Windows light/dark/HC preset when called |
 | **Modern chrome** | Windows 11 rounded corners (DWM), Mica backdrop, Acrylic fallback |
 | **Inputs** | Single-line, password (reveal + configurable Caps Lock hint), multi-line, drop-down |
 | **Checkbox** | "Don't show again"-style opt-in under the message |
@@ -103,7 +103,7 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 | **System sounds** | `Sound()` / `GlassMessage.PlaySystemSounds` play the icon's Windows sound on open |
 | **Animations** | `Fade` (default), `SlideDown`, `Scale`, `None` |
 | **Keyboard** | `Ctrl+C` copies title + message; `Enter`/`Esc` map to sensible results |
-| **RTL** | Full right-to-left mirrored layout |
+| **RTL** | Right-to-left mirrored layout |
 | **Toasts** | Six anchor positions, auto-stacking, multi-monitor aware, click actions, async variant |
 | **Cross-target** | .NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows) |
 
@@ -115,7 +115,7 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 |---|:---:|:---:|
 | `DialogResult` return value | ✅ | ✅ (argument ordering differs) |
 | Dark / Light / custom themes | ❌ | ✅ |
-| Auto-follow OS theme | ❌ | ✅ |
+| Detect OS theme when requested | ❌ | ✅ |
 | Windows 11 rounded corners + Mica | ❌ | ✅ |
 | Open / close animations | ❌ | ✅ |
 | Inline text / password / dropdown input | ❌ | ✅ |
@@ -127,25 +127,22 @@ Everything below is backed by real code in `Glass.Message` and shown live in `Gl
 | Custom bitmap icon | ❌ | ✅ |
 | `async` / awaitable + cancellable (incl. rich dialogs) | ❌ | ✅ |
 | Toast notifications (multi-monitor aware) | ❌ | ✅ |
-| Full RTL layout | ⚠️ partial | ✅ |
+| Mirrored RTL layout | ⚠️ partial | ✅ |
 | `Ctrl+C` copies message | ✅ | ✅ |
 
 ---
 
 ## 🆕 What's new in v1.0.6
 
-A quality, performance, and concurrency hardening release — no new features,
-no public API changes. All of the fixes below were verified with real
-stress/concurrency tests and live-rendered DPI screenshots, not code review
-alone.
+The v1.0.6 maintenance release adds coalesced progress updates and cached paint resources. The repository includes the regression and capture tests listed below; their presence describes test coverage, not a fresh execution result.
 
 | Area | Change |
 |---|---|
-| **Concurrency** | `GlassProgressController.SetValue`/`SetMessage`/`SetActivity` now coalesce rapid or concurrent calls so at most one UI update per kind is ever queued, instead of flooding the UI thread with one `BeginInvoke` per call under high-frequency updates. Verified with 6 concurrent worker threads plus a live message pump: no deadlock, no hang, no cross-thread exception. |
-| **Async lifecycle** | Verified that cancellation before showing, immediately after showing, while visible/animating, concurrently with a button click, and during owner disposal all reach a terminal task state — no hangs. |
-| **Memory / GDI+** | Toast notifications and the dialog's close-button/countdown-ring pens no longer allocate new paths/brushes/pens on every animation frame or repaint — they're now built once and reused, like `GlassDialog`/`GlassButton` already do. Verified GDI/USER handle counts stay bounded across 300 dialog and 200 toast create/dispose cycles. |
-| **Rendering / DPI** | Verified from actual rendered screenshots that dialogs rescale cleanly with sharp corners, crisp borders, and no artifacts at 100%, 125%, 150%, 175%, and 200% DPI. |
-| **Reliability** | Verified no stale toast entries after 25 simultaneous and 50 rapid-sequential toast show/dismiss cycles, and no corruption when a DPI change fires while progress updates and an open toast are concurrently active. |
+| **Concurrency** | `GlassProgressController.SetValue`/`SetMessage`/`SetActivity` now coalesce rapid or concurrent calls so at most one UI update per kind is ever queued, instead of flooding the UI thread with one `BeginInvoke` per call under high-frequency updates. The stress harness exercises 6 concurrent worker threads while pumping UI messages. |
+| **Async lifecycle** | Tests exercise cancellation before showing, immediately after showing and while visible, plus direct dialog disposal. The test named for a concurrent button click currently only cancels the token; it does not simulate a click or owner disposal. |
+| **Memory / GDI+** | Toast notifications and the dialog's close-button/countdown-ring pens no longer allocate new paths/brushes/pens on every animation frame or repaint — they're now built once and reused, like `GlassDialog`/`GlassButton` already do. Stress tests assert a net GDI/USER handle increase below 40 across 300 dialog and 200 toast cycles. |
+| **Rendering / DPI** | The capture harness simulates 100%, 125%, 150%, 175% and 200% DPI and writes PNGs for visual inspection. File-existence assertions do not establish visual quality; inspect the captures after running it. |
+| **Reliability** | Stress tests check active-list cleanup after 25 simultaneous and 50 sequential toasts; a mixed-DPI test checks exceptions and disposal while updates and a toast are active. |
 
 See the full [CHANGELOG](CHANGELOG.md) for details, including the prior **v1.0.5** progress-animation release and **v1.0.4** activity-aware progress release.
 
@@ -253,7 +250,7 @@ using System.Windows.Forms;
 
 // 1) (Optional) set global defaults once at startup, e.g. in Program.Main():
 GlassMessage.UseRoundedCorners = true;                    // Windows 11 rounded corners
-GlassMessage.DefaultTheme      = GlassTheme.AutoDetect(); // follow the OS theme
+GlassMessage.DefaultTheme      = GlassTheme.AutoDetect(); // select the current OS theme
 
 // 2) Show a basic, MessageBox-style dialog:
 DialogResult result = GlassMessage.Show(
@@ -379,7 +376,7 @@ Grouped and collapsible — expand what you need.
 
 <br/>
 
-All the classic `MessageBox` overloads exist.
+The facade provides the overloads listed in the [API overview](#-api-overview). It does not implement every `MessageBox.Show` overload; icon/buttons ordering also differs.
 
 ```csharp
 GlassMessage.Show(
@@ -445,7 +442,7 @@ GlassMessage.Create($"Windows is currently in {modeName} mode…")
 ```
 
 **Helpers:** `GlassTheme.AutoDetect()` (returns a preset) · `GlassTheme.IsSystemDark()` (`bool`).
-**Best practice:** set `GlassMessage.DefaultTheme = GlassTheme.AutoDetect();` once at startup.
+`AutoDetect()` selects a preset at the time of the call. Assign it at startup and call it again when your application handles a theme change; the library does not subscribe to Windows theme changes. Built-in high-contrast/system-color presets are initialized once, so recreating a custom palette may be needed after system colors change.
 
 </details>
 
@@ -651,7 +648,8 @@ using (var g = Graphics.FromImage(bmp))
 {
     g.SmoothingMode = SmoothingMode.AntiAlias;
     g.FillEllipse(Brushes.DodgerBlue, 2, 2, 44, 44);
-    g.DrawString("G", new Font("Segoe UI", 26f, FontStyle.Bold), Brushes.White, new PointF(10, 6));
+    using var logoFont = new Font("Segoe UI", 26f, FontStyle.Bold);
+    g.DrawString("G", logoFont, Brushes.White, new PointF(10, 6));
 }
 
 GlassMessage.Create("Your custom branding has been applied.")
@@ -661,7 +659,7 @@ GlassMessage.Create("Your custom branding has been applied.")
     .Show();
 ```
 
-**Best practice:** dispose the bitmap with `using` after the dialog returns.
+The caller owns a custom bitmap. Keep it alive until the dialog closes, including awaiting closure for async dialogs, then dispose it. System icons are cloned and disposed by the dialog.
 
 </details>
 
@@ -767,7 +765,7 @@ private static async void SyncWorkspace()
 }
 ```
 
-**Signature:** `Task<DialogResult> ShowAsync(string message, string title = "", MessageBoxIcon icon = None, MessageBoxButtons buttons = OK, CancellationToken ct = default)` (+ a theme-aware overload).
+**Signature:** `Task<DialogResult> ShowAsync(string message, string title = "", MessageBoxIcon icon = MessageBoxIcon.None, MessageBoxButtons buttons = MessageBoxButtons.OK, CancellationToken cancellationToken = default)` (+ a theme-aware overload).
 **Rich dialogs:** for awaitable dialogs with input / checkbox / dropdown, use the builder's `ShowAsync()` / `ShowExAsync()` — see [§17](#-complete-usage-guide).
 
 </details>
@@ -802,18 +800,23 @@ GlassMessage.Create("فشل حفظ الملف: تقرير_الربع_الراب�
 </tr>
 </table>
 
-The **EULA** dialog pairs a `Detail(...)` panel with a required `CheckBox(...)`:
+The **EULA** composition pairs a `Detail(...)` panel with a checkbox. The host must check the rich result before continuing; the library does not enforce acceptance:
 
 <img src="Images/End-User%20Licence%20Agreement.png" width="460" alt="EULA"/>
 
 ```csharp
-GlassMessage.Create("Please review and accept the licence terms to continue.")
+var agreement = GlassMessage.Create("Please review and accept the licence terms to continue.")
     .Title("End-User Licence Agreement")
     .Icon(MessageBoxIcon.Information)
     .Detail("CONTOSO SUITE 2026 — END-USER LICENCE AGREEMENT\n...")
     .CheckBox("I have read and accept the licence terms")
     .Buttons("Accept and install", "Decline")
-    .Show();
+    .ShowEx();
+
+if (agreement.Button == DialogResult.OK && agreement.CheckBoxChecked)
+{
+    // Start your application's installation flow here.
+}
 ```
 
 The **Migration Wizard** combines a drop-down, a checkbox, and a follow-up progress dialog:
@@ -874,7 +877,7 @@ GlassToast.Show("Deploying to staging-01.contoso.com…",    "CI/CD Pipeline", M
 
 **Positions:** `BottomRight` (default), `BottomLeft`, `TopRight`, `TopLeft`, `BottomCenter`, `TopCenter`.
 **Click action:** set `OnClick` — the toast runs your action and dismisses.
-**Await one:** `await GlassToast.ShowAsync(options)` completes when it closes.
+**Await one:** `await GlassToast.ShowAsync(options)` completes when it closes. Toasts are application-owned WinForms windows, not Windows notification-center entries; create them on the UI thread and keep their options unchanged while visible.
 **Multi-monitor:** toasts auto-target the active window's screen (then the cursor's, then primary) and stack **per-screen**. Pin one to a specific monitor with `Screen`:
 
 ```csharp
@@ -948,6 +951,8 @@ if (!progress.WasCanceledByUser) progress.Complete();
 await progress.Completion;            // completes when the dialog closes
 ```
 
+Updates are best-effort and coalesced per kind: intermediate values can be skipped, and calls after the handle is gone are ignored. `SetValue` does not convert a marquee bar into a determinate one. `SetMessage` changes an existing message label without resizing it, so start with a nonempty message and leave room for later status text. Await `Completion` to observe closure. A button caption such as "Cancel" does not change its result mapping; use `WasCanceledByUser` to detect user dismissal. The host remains responsible for cancelling its background operation.
+
 **Members:** `SetValue(int)` · `SetMessage(string)` · `SetActivity(GlassProgressActivity)` · `Complete()` · `Close(DialogResult)` · `Completion` (`Task<GlassResult>`) · `WasCanceledByUser` · `IsClosed`. All update methods marshal onto the UI thread, so they're safe to call from any thread.
 
 </details>
@@ -985,7 +990,7 @@ GlassMessage.PlaySystemSounds = true;
 
 - **Entry point:** `Program.Main()` calls `ApplicationConfiguration.Initialize()`, sets two global defaults, and runs `DemoForm`.
 - **`DemoForm`** builds its UI from one `(string Label, Action Action)[]` table — the single place to edit when adding a showcase.
-- **Each `Demo_*` method** is self-contained and demonstrates exactly one capability with realistic copy.
+- **Each `Demo_*` method** demonstrates dialog composition with sample product copy. Messages about backups, authentication, deployment, updates, migrations and test coverage are illustrative; these methods show dialogs or timed progress and do not perform those operations.
 
 <details markdown="1">
 <summary><b>Full demo → feature map (32 demos)</b></summary>
@@ -1039,7 +1044,7 @@ GlassMessage.PlaySystemSounds = true;
 <br/>
 
 ```csharp
-// MessageBox-compatible (several overloads):
+// MessageBox-style (argument order differs):
 DialogResult Show(string message);
 DialogResult Show(string message, string title);
 DialogResult Show(string message, string title, MessageBoxIcon icon);
@@ -1049,8 +1054,8 @@ DialogResult Show(IWin32Window owner, string message, string title, MessageBoxIc
 DialogResult Show(IWin32Window owner, string message, string title, MessageBoxIcon icon, MessageBoxButtons buttons, MessageBoxDefaultButton defaultButton, GlassTheme theme);
 
 // Async (non-blocking):
-Task<DialogResult> ShowAsync(string message, string title = "", MessageBoxIcon icon = None, MessageBoxButtons buttons = OK, CancellationToken ct = default);
-Task<DialogResult> ShowAsync(string message, string title, MessageBoxIcon icon, MessageBoxButtons buttons, GlassTheme theme, CancellationToken ct = default);
+Task<DialogResult> ShowAsync(string message, string title = "", MessageBoxIcon icon = MessageBoxIcon.None, MessageBoxButtons buttons = MessageBoxButtons.OK, CancellationToken cancellationToken = default);
+Task<DialogResult> ShowAsync(string message, string title, MessageBoxIcon icon, MessageBoxButtons buttons, GlassTheme theme, CancellationToken cancellationToken = default);
 
 // Fluent builder:
 GlassBuilder Create(string message);
@@ -1195,9 +1200,9 @@ GlassMessage.DefaultTheme = brand;   // apply everywhere
 
 > **Built-in presets:** `GlassTheme.Default` · `GlassTheme.Dark` (alias for `Default`) · `GlassTheme.Light` · `GlassTheme.Mica` · `GlassTheme.HighContrast` · `GlassTheme.WindowsClassic` · `GlassTheme.AutoDetect()`.
 >
-> **Tip:** Built-in presets are shared singletons (exempt from disposal). Custom themes implement `IDisposable` and free their fonts on `Dispose()`.
+> **Tip:** Built-in presets are shared mutable singletons (exempt from disposal); create a separate theme for local customization. Custom themes implement `IDisposable` and free their fonts on `Dispose()`. Keep a custom theme alive until every dialog or toast using it closes, and replace a global reference before disposing its theme.
 
-**Modern chrome:** with rounded corners enabled, the dialog requests crisp Windows 11 DWM corners and a **Mica** backdrop (falling back to **Acrylic** blur on Windows 10), degrading to a software-rounded region on older systems. The OS version is detected with `RtlGetVersion`, so the modern chrome still activates even when the **host app ships without a Windows 10/11 compatibility manifest** (in which case `Environment.OSVersion` would otherwise mis-report Windows 8 and quietly disable it).
+**Modern chrome:** dialogs attempt **Mica** on Windows 11, then **Acrylic** where supported, independently of the rounded-corners setting. Both are best-effort requests; the painted background remains the fallback. When rounded corners are enabled, the dialog also requests Windows 11 DWM corners and uses a software-rounded region if that request fails. The OS version is detected with `RtlGetVersion`, so the modern chrome still activates even when the **host app ships without a Windows 10/11 compatibility manifest** (in which case `Environment.OSVersion` would otherwise mis-report Windows 8 and quietly disable it).
 
 ---
 
@@ -1216,7 +1221,7 @@ GlassMessage.DefaultTheme = brand;   // apply everywhere
 
 ## 🧩 Full Example
 
-A single, practical flow combining a custom theme, the builder, an input, a checkbox, the rich result, async, and a confirming toast.
+A sample UI flow combining OS theme selection, a builder, input, a checkbox, the rich result, async confirmation and a toast. It does not export a file; connect those steps to your own application logic.
 
 ```csharp
 using Glass;
@@ -1230,7 +1235,7 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
-        // 1) Global defaults — modern corners + follow the OS theme.
+        // 1) Global defaults — modern corners + select the current OS theme.
         GlassMessage.UseRoundedCorners = true;
         GlassMessage.DefaultTheme      = GlassTheme.AutoDetect();
 
@@ -1368,6 +1373,8 @@ The test project targets `net481`, `net8.0-windows`, `net9.0-windows` and `net10
 Builds invoke `tools/Sign-Output.ps1`; without a configured developer certificate it warns and leaves the output unsigned. Certificate setup is separate from ordinary source validation.
 
 
+DPI captures are saved under `%TEMP%\Glass.Message.Tests\dpi-renders`. Review the images separately; successful tests do not certify visual quality, accessibility conformance or every monitor setup.
+
 **Visual Studio:** open `Glass.sln` → set **Glass.Demo** as startup → press **F5**.
 
 **Command line:**
@@ -1424,7 +1431,7 @@ Windows-only jobs build the library because it targets .NET Framework 4.8.1 and 
 
 <details markdown="1">
 <summary><b>How do I make dialogs follow the user's Windows theme?</b></summary>
-<br/><code>GlassMessage.DefaultTheme = GlassTheme.AutoDetect();</code> at startup.
+<br/>Assign <code>GlassMessage.DefaultTheme = GlassTheme.AutoDetect();</code> at startup, then call it again from your app's theme-change handling. This selects a preset when called; it does not install a live theme subscription.
 </details>
 
 <details markdown="1">
