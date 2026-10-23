@@ -1,5 +1,7 @@
 <div align="center" markdown="1">
 
+<a id="️-running-the-demo"></a>
+
 # 🪟 Glass.Message — Modern MessageBox Replacement for WinForms (C#/.NET)
 
 <a id="the-modern-messagebox-replacement-for-windows-desktop-apps"></a>
@@ -1304,6 +1306,8 @@ internal sealed class MainForm : Form
 ---
 
 <a id="-project-structure"></a>
+
+<a id="️-project-structure"></a>
 
 ## 🏗️ Architecture
 

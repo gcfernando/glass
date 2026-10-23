@@ -9,6 +9,10 @@ permalink: /documentation/
 
 Find installation, WinForms dialog examples and the source contracts behind Glass.Message.
 
+<a id="explore-more"></a>
+<a id="markdown-source-library"></a>
+<a id="read-online"></a>
+
 ## 🧭 Choose a guide
 
 | Task | Guide |
