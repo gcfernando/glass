@@ -1,6 +1,6 @@
 # 🪟 Glass.Message — WinForms MessageBox Replacement for C# and .NET
 
-**The modern `MessageBox` replacement for .NET WinForms — Windows 11 ready, zero migration cost.**
+**The modern `MessageBox` replacement for .NET WinForms — Windows 11 ready, explicit, familiar dialog APIs.**
 
 Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API · async/await dialogs · inline text & password inputs · activity-aware live progress bars · toast notifications · per-monitor DPI · full RTL support.
 
@@ -15,16 +15,16 @@ Mica & Acrylic backdrops · automatic dark/light theming · fluent builder API �
 
 ## Why Glass.Message?
 
-`System.Windows.Forms.MessageBox` hasn't changed since Windows XP. It ignores dark mode, ignores your monitor's DPI, can't be awaited, and looks out of place on Windows 10/11. Glass.Message replaces it with a single type-name change — the `Show(...)` overloads are **100% signature-compatible** and still return `DialogResult`.
+Glass.Message adds themes, async dialogs, inputs, progress and toasts to Windows Forms applications. Its `Show(...)` methods return `DialogResult`, but migration may require reordering arguments: Glass takes `MessageBoxIcon` before `MessageBoxButtons`, while `MessageBox.Show(...)` takes buttons before icon. Call dialog APIs from the WinForms UI (STA) thread; the live progress controller marshals subsequent worker-thread updates.
 
 ```csharp
 // Before — flat grey dialog, blocks the thread, ignores dark mode
 MessageBox.Show("Save failed. The file is in use by another process.",
     "Save Error", MessageBoxButtons.RetryCancel, MessageBoxIcon.Error);
 
-// After — same one-liner, now modern, themed, DPI-aware, animated
+// After — preserve Retry/Cancel and reorder icon/buttons
 GlassMessage.Show("Save failed. The file is in use by another process.",
-    "Save Error", MessageBoxIcon.Error);
+    "Save Error", MessageBoxIcon.Error, MessageBoxButtons.RetryCancel);
 ```
 
 No new dependencies. No additional configuration. Works on .NET Framework 4.8.1 and .NET 8 / 9 / 10.
@@ -104,7 +104,7 @@ GlassMessage.UseRoundedCorners = true;                    // Windows 11 rounded 
 GlassMessage.DefaultTheme      = GlassTheme.AutoDetect(); // follow the OS light / dark theme
 GlassMessage.PlaySystemSounds  = true;                    // match classic MessageBox behaviour
 
-// Drop-in replacement (same signature, same DialogResult)
+// Glass overload: icon precedes buttons; returns DialogResult
 DialogResult result = GlassMessage.Show(
     "Your changes have been saved.", "Success", MessageBoxIcon.Information);
 ```

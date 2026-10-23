@@ -5,32 +5,30 @@ description: "A modern Windows Forms MessageBox library with async dialogs, inpu
 permalink: /documentation/
 ---
 
-Browse the published guides, examples and reference pages for **Glass.Message**. Each guide has a readable web page; the Markdown sources remain available on GitHub.
+# Glass.Message Documentation
 
-## Read online
+Find installation, WinForms dialog examples and the source contracts behind Glass.Message.
 
-<table>
-<thead><tr><th>Guide</th><th>Markdown or HTML source</th></tr></thead>
-<tbody>
-{% assign guides = site.html_pages | sort: 'url' %}
-{% for guide in guides %}{% if guide.sitemap != false and guide.url != page.url and guide.url != '/404.html' %}
-<tr><td><a href="{{ guide.url | absolute_url }}">{{ guide.title | default: guide.name | escape }}</a></td><td><a href="https://github.com/{{ site.repository }}/blob/main/{{ guide.path | uri_escape }}">View source</a></td></tr>
-{% endif %}{% endfor %}
-{% for guide in site.static_files %}{% if guide.extname == '.html' and guide.sitemap != false %}
-<tr><td><a href="{{ guide.path | replace: '/index.html', '/' | absolute_url }}">{% if guide.path == '/Linux_Commands/index.html' %}Linux Command Reference{% elsif guide.path contains 'ai_coding_plugins_beginners_guide' %}AI Coding Add-ons: Beginner’s Guide{% else %}{{ guide.name | escape }} — {{ guide.path | escape }}{% endif %}</a></td><td><a href="https://github.com/{{ site.repository }}/blob/main{{ guide.path | uri_escape }}">View HTML source</a></td></tr>
-{% endif %}{% endfor %}
-</tbody>
-</table>
+## 🧭 Choose a guide
 
-## Markdown source library
+| Task | Guide |
+|---|---|
+| Add the library to a Windows Forms app | [Quick start](README.md#-quick-start) and [installation](README.md#-installation) |
+| Migrate MessageBox calls safely | [Overview and argument ordering](README.md#-the-one-line-pitch) |
+| Use inputs, async dialogs, progress or toasts | [Usage guide](README.md#-complete-usage-guide) and [API overview](README.md#-api-overview) |
+| Customize themes and defaults | [Configuration](README.md#-configuration) and [styling](README.md#-styling-and-customization) |
+| Build and verify changes | [Development and testing](README.md#-running-the-demo) and [project requirements](README.md#-requirements) |
+| Read the package-facing guide | [NuGet README](README.nuget.md) |
+| Review historical release changes | [Changelog](CHANGELOG.md) |
 
-[View this documentation index source](https://github.com/{{ site.repository }}/blob/main/documentation.md). These are the authored Markdown files. Some are package-specific documents or alternate source formats of the same guide.
+## 🔗 Source references
 
-{% assign sources = site.static_files | sort: 'path' %}
-{% for source in sources %}{% if source.extname == '.md' %}
-- [{{ source.path | escape }}](https://github.com/{{ site.repository }}/blob/main{{ source.path | uri_escape }})
-{% endif %}{% endfor %}
+[Public facade](Glass.Message/GlassMessage.cs) · [Fluent builder](Glass.Message/GlassBuilder.cs) · [Progress controller](Glass.Message/GlassProgressController.cs) · [Release workflow](.github/workflows/release.yml)
 
-## Explore more
+Dialog creation belongs on the WinForms UI thread. The progress controller supports marshaled worker updates; this does not make all dialog APIs callable from arbitrary threads.
 
-[All developer projects](https://gcfernando.github.io/gcfernando/projects/) · [Repository on GitHub](https://github.com/gcfernando/glass) · [XML sitemap](https://gcfernando.github.io/glass/sitemap.xml)
+## 🌐 Published documentation
+
+This index is also rendered by the repository's GitHub Pages site. Relative links above point to the authored repository documents; package READMEs target NuGet readers and may use absolute GitHub links.
+
+[Repository](https://github.com/gcfernando/glass) · [Project overview](README.md)

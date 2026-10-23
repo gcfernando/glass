@@ -31,7 +31,9 @@ Mica &amp; Acrylic backdrops · automatic dark/light theming · fluent builder �
 
 ---
 
-## ✨ The one-line pitch
+<a id="-the-one-line-pitch"></a>
+
+## 🔎 Overview
 
 For supported `MessageBox.Show(...)` overloads, use `GlassMessage.Show(...)` to display a themed, DPI-aware dialog. Install the package and import its namespace as shown in the quick start, then choose a standard overload or use the fluent builder for additional options.
 
@@ -69,7 +71,39 @@ GlassMessage.Show(
 </tr>
 </table>
 
-> The `Show(...)` overloads are **signature-compatible** with `System.Windows.Forms.MessageBox`, so most call sites compile untouched and still return a `DialogResult`.
+> `GlassMessage.Show(...)` returns `DialogResult`, but its overloads are **not signature-identical** to `MessageBox.Show(...)`. Glass takes `MessageBoxIcon` before `MessageBoxButtons`; the classic API takes buttons before icon. Reorder those arguments during migration and check the [facade signatures](Glass.Message/GlassMessage.cs) for owner/default-button overloads. Call dialog APIs from the WinForms UI (STA) thread.
+
+---
+
+<a id="-features"></a>
+
+## ✨ Features
+
+Everything below is backed by real code in `Glass.Message` and shown live in `Glass.Demo`.
+
+| Category | Capability |
+|---|---|
+| **MessageBox-style API** | `GlassMessage.Show(...)` overloads returning `DialogResult`; review icon/buttons ordering when migrating |
+| **Fluent builder** | `GlassMessage.Create(...)` for composable dialogs |
+| **Async** | `ShowAsync(...)` on the facade **and** the builder (`ShowAsync()` / `ShowExAsync()`) — non-blocking, awaitable, cancellable |
+| **Rich result** | `ShowEx()` / `ShowExAsync()` return button **+** checkbox state **+** typed input |
+| **Live progress** | `ShowProgress()` → a thread-safe `GlassProgressController` you update while work runs |
+| **Activity-aware progress** | `ProgressActivity(...)` animates the bar to match the operation (upload, download, sync, compress, …) — 6 distinct families, switchable live |
+| **Theming** | `Dark`, `Light`, `Mica`, `HighContrast`, `WindowsClassic` + custom themes |
+| **Auto theme** | `GlassTheme.AutoDetect()` follows the Windows light/dark/HC setting |
+| **Modern chrome** | Windows 11 rounded corners (DWM), Mica backdrop, Acrylic fallback |
+| **Inputs** | Single-line, password (reveal + configurable Caps Lock hint), multi-line, drop-down |
+| **Checkbox** | "Don't show again"-style opt-in under the message |
+| **Detail panel** | Expandable "Show details" for stack traces / diagnostics |
+| **Progress** | Determinate and indeterminate (marquee) bars, with optional activity-matched flow animations |
+| **Countdown** | Auto-confirm the default button with a live circular countdown |
+| **Custom icon** | Any 48×48 `Bitmap` (e.g. a product logo) |
+| **System sounds** | `Sound()` / `GlassMessage.PlaySystemSounds` play the icon's Windows sound on open |
+| **Animations** | `Fade` (default), `SlideDown`, `Scale`, `None` |
+| **Keyboard** | `Ctrl+C` copies title + message; `Enter`/`Esc` map to sensible results |
+| **RTL** | Full right-to-left mirrored layout |
+| **Toasts** | Six anchor positions, auto-stacking, multi-monitor aware, click actions, async variant |
+| **Cross-target** | .NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows) |
 
 ---
 
@@ -77,7 +111,7 @@ GlassMessage.Show(
 
 | | `MessageBox` | **Glass.Message** |
 |---|:---:|:---:|
-| Drop-in `Show(...)` API | ✅ | ✅ |
+| `DialogResult` return value | ✅ | ✅ (argument ordering differs) |
 | Dark / Light / custom themes | ❌ | ✅ |
 | Auto-follow OS theme | ❌ | ✅ |
 | Windows 11 rounded corners + Mica | ❌ | ✅ |
@@ -207,37 +241,37 @@ GlassMessage.Create("Mica backdrop applied.")
 
 ---
 
-## 🚀 Features
+<a id="-quick-start"></a>
 
-Everything below is backed by real code in `Glass.Message` and shown live in `Glass.Demo`.
+## 🚀 Quick start
 
-| Category | Capability |
-|---|---|
-| **Drop-in API** | `GlassMessage.Show(...)` overloads that mirror `MessageBox.Show` exactly |
-| **Fluent builder** | `GlassMessage.Create(...)` for composable dialogs |
-| **Async** | `ShowAsync(...)` on the facade **and** the builder (`ShowAsync()` / `ShowExAsync()`) — non-blocking, awaitable, cancellable |
-| **Rich result** | `ShowEx()` / `ShowExAsync()` return button **+** checkbox state **+** typed input |
-| **Live progress** | `ShowProgress()` → a thread-safe `GlassProgressController` you update while work runs |
-| **Activity-aware progress** | `ProgressActivity(...)` animates the bar to match the operation (upload, download, sync, compress, …) — 6 distinct families, switchable live |
-| **Theming** | `Dark`, `Light`, `Mica`, `HighContrast`, `WindowsClassic` + custom themes |
-| **Auto theme** | `GlassTheme.AutoDetect()` follows the Windows light/dark/HC setting |
-| **Modern chrome** | Windows 11 rounded corners (DWM), Mica backdrop, Acrylic fallback |
-| **Inputs** | Single-line, password (reveal + configurable Caps Lock hint), multi-line, drop-down |
-| **Checkbox** | "Don't show again"-style opt-in under the message |
-| **Detail panel** | Expandable "Show details" for stack traces / diagnostics |
-| **Progress** | Determinate and indeterminate (marquee) bars, with optional activity-matched flow animations |
-| **Countdown** | Auto-confirm the default button with a live circular countdown |
-| **Custom icon** | Any 48×48 `Bitmap` (e.g. a product logo) |
-| **System sounds** | `Sound()` / `GlassMessage.PlaySystemSounds` play the icon's Windows sound on open |
-| **Animations** | `Fade` (default), `SlideDown`, `Scale`, `None` |
-| **Keyboard** | `Ctrl+C` copies title + message; `Enter`/`Esc` map to sensible results |
-| **RTL** | Full right-to-left mirrored layout |
-| **Toasts** | Six anchor positions, auto-stacking, multi-monitor aware, click actions, async variant |
-| **Cross-target** | .NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows) |
+```csharp
+using Glass;
+using System.Windows.Forms;
+
+// 1) (Optional) set global defaults once at startup, e.g. in Program.Main():
+GlassMessage.UseRoundedCorners = true;                    // Windows 11 rounded corners
+GlassMessage.DefaultTheme      = GlassTheme.AutoDetect(); // follow the OS theme
+
+// 2) Show a basic, MessageBox-style dialog:
+DialogResult result = GlassMessage.Show(
+    "Your changes have been saved.",
+    "Success",
+    MessageBoxIcon.Information);
+
+// 3) React to the result exactly like a classic MessageBox:
+if (result == DialogResult.OK) { /* ... */ }
+```
+
+Run this code from an existing Windows Forms UI event handler or startup path on its STA thread.
+
+**Expected behaviour:** a themed dialog fades in, centred on the screen containing the mouse cursor (multi-monitor aware), with a glossy OK button. **Enter**, **OK**, or **Esc** all return `DialogResult.OK` for a single-button dialog.
 
 ---
 
-## 📦 Installation
+<a id="-installation"></a>
+
+## 📦 Prerequisites and installation
 
 <details open markdown="1">
 <summary><b>Option A — Download from Releases</b> (no account, no NuGet needed)</summary>
@@ -302,40 +336,44 @@ Install-Package Glass.Message   # Package Manager Console
 
 </details>
 
+> Prerequisites: a Windows Forms application targeting one of `net481`, `net8.0-windows`, `net9.0-windows` or `net10.0-windows`. Use an SDK/targeting pack for the target you build.
+>
 > Then add a single `using Glass;` and you're ready. See the [CHANGELOG](CHANGELOG.md) for what's new in each version.
 
 ---
 
-## ⚡ Quick Start
+<a id="-configuration"></a>
+
+## ⚙️ Configuration
+
+**Global defaults** (set once at startup):
+
+| Setting | Type | Default | Effect |
+|---|---|---|---|
+| `GlassMessage.DefaultTheme` | `GlassTheme` | `GlassTheme.Default` (dark) | Theme when none is specified |
+| `GlassMessage.UseRoundedCorners` | `bool` | `false` | Global rounded-corners default |
+| `GlassMessage.PlaySystemSounds` | `bool` | `false` | Play the icon's system sound on open |
 
 ```csharp
-using Glass;
-using System.Windows.Forms;
-
-// 1) (Optional) set global defaults once at startup, e.g. in Program.Main():
-GlassMessage.UseRoundedCorners = true;                    // Windows 11 rounded corners
-GlassMessage.DefaultTheme      = GlassTheme.AutoDetect(); // follow the OS theme
-
-// 2) Show a basic, MessageBox-style dialog:
-DialogResult result = GlassMessage.Show(
-    "Your changes have been saved.",
-    "Success",
-    MessageBoxIcon.Information);
-
-// 3) React to the result exactly like a classic MessageBox:
-if (result == DialogResult.OK) { /* ... */ }
+GlassMessage.UseRoundedCorners = true;
+GlassMessage.DefaultTheme      = GlassTheme.AutoDetect();
+GlassMessage.PlaySystemSounds  = true;   // optional — off by default
 ```
 
-**Expected behaviour:** a themed dialog fades in, centred on the screen containing the mouse cursor (multi-monitor aware), with a glossy OK button. **Enter**, **OK**, or **Esc** all return `DialogResult.OK` for a single-button dialog.
+Everything else is per-dialog via the builder. The **only required** value is the `message`.
+
+**Toast options** (`GlassToastOptions`): `Message`, `Title`, `Icon` (`None`), `Theme` (falls back to `DefaultTheme`), `DurationMs` (`4000`), `Position` (`BottomRight`), `OnClick`, `UseRoundedCorners` (`null` → global), `Screen` (`null` → auto-target the active screen).
 
 ---
 
-## 📚 Complete Usage Guide
+<a id="-complete-usage-guide"></a>
+
+## 💡 Usage
 
 Grouped and collapsible — expand what you need.
 
 <details open markdown="1">
-<summary><b>1 · Drop-in replacement — <code>Show</code></b></summary>
+<summary><b>1 · MessageBox-style dialogs — <code>Show</code></b></summary>
 
 <br/>
 
@@ -1112,30 +1150,6 @@ enum ToastPosition  { BottomRight, BottomLeft, TopRight, TopLeft, BottomCenter, 
 
 ---
 
-<a id="-configuration"></a>
-
-## ⚙️ Configuration
-
-**Global defaults** (set once at startup):
-
-| Setting | Type | Default | Effect |
-|---|---|---|---|
-| `GlassMessage.DefaultTheme` | `GlassTheme` | `GlassTheme.Default` (dark) | Theme when none is specified |
-| `GlassMessage.UseRoundedCorners` | `bool` | `false` | Global rounded-corners default |
-| `GlassMessage.PlaySystemSounds` | `bool` | `false` | Play the icon's system sound on open |
-
-```csharp
-GlassMessage.UseRoundedCorners = true;
-GlassMessage.DefaultTheme      = GlassTheme.AutoDetect();
-GlassMessage.PlaySystemSounds  = true;   // optional — off by default
-```
-
-Everything else is per-dialog via the builder. The **only required** value is the `message`.
-
-**Toast options** (`GlassToastOptions`): `Message`, `Title`, `Icon` (`None`), `Theme` (falls back to `DefaultTheme`), `DurationMs` (`4000`), `Position` (`BottomRight`), `OnClick`, `UseRoundedCorners` (`null` → global), `Screen` (`null` → auto-target the active screen).
-
----
-
 ## 🎨 Styling and Customization
 
 Beyond the five presets, build a fully custom `GlassTheme` — every colour, font, corner radius, and the opacity is settable.
@@ -1195,151 +1209,6 @@ GlassMessage.DefaultTheme = brand;   // apply everywhere
 - **Dispose custom bitmap icons** with `using`.
 - **Use `GlassAnimation.None` in tests** for deterministic dialogs.
 - ⚠️ **Windows-only** (WinForms) · **treat passwords as secrets** (don't log `InputText`).
-
----
-
-<a id="-project-structure"></a>
-
-## 🗂️ Project Structure
-
-```text
-Glass/
-├── Glass.sln                     # Solution: library + demo + tests
-├── README.md  ·  LICENSE         # This file · MIT
-├── Glass.Message/                # ── The library ──
-│   ├── GlassMessage.cs           # Static facade (Show / ShowAsync / Create)
-│   ├── GlassBuilder.cs           # Fluent builder
-│   ├── GlassDialog.cs            # WinForms dialog (rendering, layout, animations)
-│   ├── GlassDialogConfig.cs      # Internal settings bag
-│   ├── GlassResult.cs            # Rich result (button + checkbox + input)
-│   ├── GlassProgressController.cs# Live handle for non-blocking progress dialogs
-│   ├── GlassTheme.cs             # Palette + presets + AutoDetect
-│   ├── GlassToast.cs             # Toast facade, options, and toast window
-│   ├── GlassButton.cs            # Themed button control
-│   ├── OsVersion.cs              # True Windows version (RtlGetVersion) for DWM chrome
-│   ├── GlassAnimation.cs         # enum: Fade / SlideDown / Scale / None
-│   ├── GlassInputMode.cs         # enum: None / Text / Password / Multiline / Dropdown
-│   └── GlassProgressActivity.cs  # enum: progress flow activities (Upload / Download / Sync / …)
-├── Glass.Demo/                   # ── WinForms feature gallery ──
-│   └── Program.cs                # DemoForm + one Demo_* method per feature
-├── Glass.Message.Tests/          # ── Unit tests ──
-├── Images/                       # Screenshots used by this README
-└── tools/                        # Build/signing helper scripts
-```
-
----
-
-## 💻 Requirements
-
-| | |
-|---|---|
-| **OS** | Windows (Windows-only by design) |
-| **UI stack** | Windows Forms |
-| **Library targets** | `net481`, `net8.0-windows`, `net9.0-windows`, `net10.0-windows` |
-| **Demo target** | `net8.0-windows` |
-| **High-DPI** | `PerMonitorV2` |
-| **Dependencies** | None beyond the .NET / WinForms framework assemblies |
-
----
-
-<a id="-running-the-demo"></a>
-
-## ▶️ Running the Demo
-
-**Visual Studio:** open `Glass.sln` → set **Glass.Demo** as startup → press **F5**.
-
-**Command line:**
-
-```bash
-dotnet run --project Glass.Demo     # launch the gallery
-dotnet build Glass.sln -c Release   # build everything
-```
-
-> The projects include an optional post-build Authenticode signing step (`tools\Sign-Output.ps1`) that runs with `ContinueOnError` — if you haven't set up a dev certificate, the build still succeeds and signing is simply skipped.
-
----
-
-## ❓ FAQ
-
-<details markdown="1">
-<summary><b>Can I really just replace <code>MessageBox</code> with <code>GlassMessage</code>?</b></summary>
-<br/>Yes — <code>GlassMessage.Show(...)</code> is signature-compatible with <code>MessageBox.Show(...)</code>, so most call sites compile unchanged and still return a <code>DialogResult</code>.
-</details>
-
-<details markdown="1">
-<summary><b>How do I get the checkbox state or typed input back?</b></summary>
-<br/>Call <code>ShowEx()</code> instead of <code>Show()</code> and read <code>GlassResult.CheckBoxChecked</code> / <code>GlassResult.InputText</code>.
-</details>
-
-<details markdown="1">
-<summary><b>My three-button dialog returns odd <code>DialogResult</code> values. Why?</b></summary>
-<br/>Custom labels map to the nearest standard layout by count: 1→OK, 2→OK/Cancel, 3+→Yes/No/Cancel. With three labels the buttons return <code>Yes</code> / <code>No</code> / <code>Cancel</code> in order.
-</details>
-
-<details markdown="1">
-<summary><b>How do I make dialogs follow the user's Windows theme?</b></summary>
-<br/><code>GlassMessage.DefaultTheme = GlassTheme.AutoDetect();</code> at startup.
-</details>
-
-<details markdown="1">
-<summary><b>Are toasts modal? Does it block the UI thread?</b></summary>
-<br/>Toasts are non-modal, top-most, auto-dismissing windows. <code>Show()</code>/<code>ShowEx()</code> are modal (blocking); use <code>ShowAsync(...)</code> for a non-blocking, awaitable dialog.
-</details>
-
-<details markdown="1">
-<summary><b>How do I close an async dialog from code?</b></summary>
-<br/>Pass a <code>CancellationToken</code> to <code>ShowAsync</code>; cancelling it closes the dialog and yields <code>DialogResult.Cancel</code>.
-</details>
-
-<details markdown="1">
-<summary><b>Can I hide the Caps Lock hint on password fields?</b></summary>
-<br/>Yes — pass <code>showCapsLockHint: false</code> to <code>InputPassword()</code>:<br/><code>.InputPassword("placeholder", showCapsLockHint: false)</code>
-</details>
-
-<details markdown="1">
-<summary><b>Which .NET versions are supported?</b></summary>
-<br/>.NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows).
-</details>
-
----
-
-## 🤝 Contributing
-
-1. **Fork** and create a feature branch.
-2. Make your change in `Glass.Message`; for user-visible features, add a `Demo_*` showcase by appending an entry to the `demos` table in `Glass.Demo/Program.cs`.
-3. Add or update tests in **Glass.Message.Tests**.
-4. Build the solution and run the demo to smoke-test visually.
-5. Open a PR describing the change, with a screenshot for any UI work.
-
-> The demo's `demos` array is the single list to edit when adding or removing a feature showcase — keep it in sync with the library.
-
----
-
-## 🚢 Release pipeline
-
-Releases are produced by [`.github/workflows/release.yml`](https://github.com/gcfernando/glass/blob/main/.github/workflows/release.yml), triggered by pushing a version tag (`git push origin v1.2.3`), publishing a GitHub Release, or a manual run. The pipeline is split into focused jobs so independent work runs in parallel and a failure points straight at the stage that broke:
-
-```text
-metadata ─► test ─┬─► package ─┐
-                  └─► demo ────┴─► release ─► publish-nuget
-```
-
-| Job | Runner | What it does |
-|---|---|---|
-| **metadata** | Linux | Resolves the version and extracts the matching `CHANGELOG.md` section once, sharing them via a job output + an artifact. |
-| **test** | Windows | Builds the library (all four TFMs) and runs the unit tests — the quality gate for everything downstream. |
-| **package** | Windows | Packs the `.nupkg` / `.snupkg` (CHANGELOG notes embedded) and zips the per-framework DLLs. |
-| **demo** | Windows | Publishes the self-contained demo app for `win-x64` and `win-x86`. Runs in parallel with **package**. |
-| **release** | Linux | Gathers every artifact and publishes the GitHub Release. Skipped on manual runs. |
-| **publish-nuget** | Linux | Pushes the package to NuGet.org (only when the `NUGET_API_KEY` secret is present). |
-
-Windows-only jobs build the library because it targets .NET Framework 4.8.1 and Windows Forms; the lightweight metadata/release/publish jobs run on Linux.
-
----
-
-## 📄 License
-
-Licensed under the **MIT License** — see [LICENSE](LICENSE). `Copyright (c) 2026 Gehan Fernando`
 
 ---
 
@@ -1431,6 +1300,172 @@ internal sealed class MainForm : Form
 <sub>A modern message box, the way Windows dialogs should look.</sub>
 
 </div>
+
+---
+
+<a id="-project-structure"></a>
+
+## 🏗️ Architecture
+
+```text
+Glass/
+├── Glass.sln                     # Solution: library + demo + tests
+├── README.md  ·  LICENSE         # This file · MIT
+├── Glass.Message/                # ── The library ──
+│   ├── GlassMessage.cs           # Static facade (Show / ShowAsync / Create)
+│   ├── GlassBuilder.cs           # Fluent builder
+│   ├── GlassDialog.cs            # WinForms dialog (rendering, layout, animations)
+│   ├── GlassDialogConfig.cs      # Internal settings bag
+│   ├── GlassResult.cs            # Rich result (button + checkbox + input)
+│   ├── GlassProgressController.cs# Live handle for non-blocking progress dialogs
+│   ├── GlassTheme.cs             # Palette + presets + AutoDetect
+│   ├── GlassToast.cs             # Toast facade, options, and toast window
+│   ├── GlassButton.cs            # Themed button control
+│   ├── OsVersion.cs              # True Windows version (RtlGetVersion) for DWM chrome
+│   ├── GlassAnimation.cs         # enum: Fade / SlideDown / Scale / None
+│   ├── GlassInputMode.cs         # enum: None / Text / Password / Multiline / Dropdown
+│   └── GlassProgressActivity.cs  # enum: progress flow activities (Upload / Download / Sync / …)
+├── Glass.Demo/                   # ── WinForms feature gallery ──
+│   └── Program.cs                # DemoForm + one Demo_* method per feature
+├── Glass.Message.Tests/          # ── Unit tests ──
+├── Images/                       # Screenshots used by this README
+└── tools/                        # Build/signing helper scripts
+```
+
+---
+
+## 💻 Requirements
+
+| | |
+|---|---|
+| **OS** | Windows (Windows-only by design) |
+| **UI stack** | Windows Forms |
+| **Library targets** | `net481`, `net8.0-windows`, `net9.0-windows`, `net10.0-windows` |
+| **Demo target** | `net8.0-windows` |
+| **High-DPI** | `PerMonitorV2` |
+| **Dependencies** | None beyond the .NET / WinForms framework assemblies |
+
+---
+
+<a id="-running-the-demo"></a>
+
+## 🧪 Development and testing
+
+From the repository root on Windows, with the SDKs/targeting packs for the selected frameworks installed:
+
+```powershell
+dotnet restore Glass.sln
+dotnet build Glass.sln -c Release --no-restore
+dotnet test Glass.Message.Tests/Glass.Message.Tests.csproj -c Release --no-restore
+```
+
+The test project targets `net481`, `net8.0-windows`, `net9.0-windows` and `net10.0-windows`. UI/stress tests require a Windows desktop session. For one installed runtime, add `-f net10.0-windows` to the test command; this does not verify the other targets.
+
+Builds invoke `tools/Sign-Output.ps1`; without a configured developer certificate it warns and leaves the output unsigned. Certificate setup is separate from ordinary source validation.
+
+
+**Visual Studio:** open `Glass.sln` → set **Glass.Demo** as startup → press **F5**.
+
+**Command line:**
+
+```bash
+dotnet run --project Glass.Demo     # launch the gallery
+dotnet build Glass.sln -c Release   # build everything
+```
+
+> The projects include an optional post-build Authenticode signing step (`tools\Sign-Output.ps1`) that runs with `ContinueOnError` — if you haven't set up a dev certificate, the build still succeeds and signing is simply skipped.
+
+---
+
+## 🚢 Release pipeline
+
+Releases are produced by [`.github/workflows/release.yml`](https://github.com/gcfernando/glass/blob/main/.github/workflows/release.yml), triggered by pushing a version tag (`git push origin v1.2.3`), publishing a GitHub Release, or a manual run. The pipeline is split into focused jobs so independent work runs in parallel and a failure points straight at the stage that broke:
+
+```text
+metadata ─► test ─┬─► package ─┐
+                  └─► demo ────┴─► release ─► publish-nuget
+```
+
+| Job | Runner | What it does |
+|---|---|---|
+| **metadata** | Linux | Resolves the version and extracts the matching `CHANGELOG.md` section once, sharing them via a job output + an artifact. |
+| **test** | Windows | Builds the library (all four TFMs) and runs the unit tests — the quality gate for everything downstream. |
+| **package** | Windows | Packs the `.nupkg` / `.snupkg` (CHANGELOG notes embedded) and zips the per-framework DLLs. |
+| **demo** | Windows | Publishes the self-contained demo app for `win-x64` and `win-x86`. Runs in parallel with **package**. |
+| **release** | Linux | Gathers every artifact and publishes the GitHub Release. Skipped on manual runs. |
+| **publish-nuget** | Linux | Pushes the package to NuGet.org (only when the `NUGET_API_KEY` secret is present). |
+
+Windows-only jobs build the library because it targets .NET Framework 4.8.1 and Windows Forms; the lightweight metadata/release/publish jobs run on Linux.
+
+---
+
+<a id="-faq"></a>
+
+## 🛠️ Troubleshooting and limitations
+
+<details markdown="1">
+<summary><b>Can I really just replace <code>MessageBox</code> with <code>GlassMessage</code>?</b></summary>
+<br/>Check the overload first. Both return <code>DialogResult</code>, but Glass takes <code>MessageBoxIcon</code> before <code>MessageBoxButtons</code>. Preserve the original button set, reorder those arguments, and check owner/default-button overloads before compiling the migrated call.
+</details>
+
+<details markdown="1">
+<summary><b>How do I get the checkbox state or typed input back?</b></summary>
+<br/>Call <code>ShowEx()</code> instead of <code>Show()</code> and read <code>GlassResult.CheckBoxChecked</code> / <code>GlassResult.InputText</code>.
+</details>
+
+<details markdown="1">
+<summary><b>My three-button dialog returns odd <code>DialogResult</code> values. Why?</b></summary>
+<br/>Custom labels map to the nearest standard layout by count: 1→OK, 2→OK/Cancel, 3+→Yes/No/Cancel. With three labels the buttons return <code>Yes</code> / <code>No</code> / <code>Cancel</code> in order.
+</details>
+
+<details markdown="1">
+<summary><b>How do I make dialogs follow the user's Windows theme?</b></summary>
+<br/><code>GlassMessage.DefaultTheme = GlassTheme.AutoDetect();</code> at startup.
+</details>
+
+<details markdown="1">
+<summary><b>Are toasts modal? Does it block the UI thread?</b></summary>
+<br/>Toasts are non-modal, top-most, auto-dismissing windows. <code>Show()</code>/<code>ShowEx()</code> are modal (blocking); use <code>ShowAsync(...)</code> for a non-blocking, awaitable dialog.
+</details>
+
+<details markdown="1">
+<summary><b>How do I close an async dialog from code?</b></summary>
+<br/>Pass a <code>CancellationToken</code> to <code>ShowAsync</code>; cancelling it closes the dialog and yields <code>DialogResult.Cancel</code>.
+</details>
+
+<details markdown="1">
+<summary><b>Can I hide the Caps Lock hint on password fields?</b></summary>
+<br/>Yes — pass <code>showCapsLockHint: false</code> to <code>InputPassword()</code>:<br/><code>.InputPassword("placeholder", showCapsLockHint: false)</code>
+</details>
+
+<details markdown="1">
+<summary><b>Which .NET versions are supported?</b></summary>
+<br/>.NET Framework 4.8.1 and .NET 8 / 9 / 10 (Windows).
+</details>
+
+---
+
+## 🤝 Contributing
+
+1. **Fork** and create a feature branch.
+2. Make your change in `Glass.Message`; for user-visible features, add a `Demo_*` showcase by appending an entry to the `demos` table in `Glass.Demo/Program.cs`.
+3. Add or update tests in **Glass.Message.Tests**.
+4. Build the solution and run the demo to smoke-test visually.
+5. Open a PR describing the change, with a screenshot for any UI work.
+
+> The demo's `demos` array is the single list to edit when adding or removing a feature showcase — keep it in sync with the library.
+
+---
+
+## 🔒 Security
+
+Password inputs return text to the host application; avoid logging `GlassResult.InputText` or including it in screenshots. The host owns input validation and handling of secrets. For a suspected library vulnerability, use GitHub private vulnerability reporting if enabled, or arrange a private channel with the maintainer before disclosing sensitive details.
+
+<a id="-license"></a>
+
+## 📄 Support and license
+
+Licensed under the **MIT License** — see [LICENSE](LICENSE). `Copyright (c) 2026 Gehan Fernando`
 
 ---
 
